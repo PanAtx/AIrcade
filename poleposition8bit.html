@@ -13,12 +13,28 @@
 html,body{width:100%;height:100%;overflow:hidden;background:#000;
  font-family:'Press Start 2P','Courier New',monospace;color:#fff;
  touch-action:none;overscroll-behavior:none;-webkit-user-select:none;user-select:none}
+/* page content is TOP-aligned (like pacman.html / donkeykong.html):
+   title bar, then the game window, with --padH of screen reserved at the
+   BOTTOM for the control pad and --headH reserved at the TOP for the title */
+body{display:flex;flex-direction:column;align-items:center;justify-content:flex-start}
+/* ---------- title bar (← Back on the left, title centred) ---------- */
+.titlebar{display:flex;align-items:center;justify-content:space-between;
+ width:min(100vw,calc((100vh - var(--padH) - var(--headH))*4/3 + 4px));
+ height:var(--headH);margin:0 auto;padding:0 10px;flex:none}
+#backBtn{background:#1c1c4a;color:#ffd23e;border:2px solid #3a3a9a;border-radius:8px;
+ font-size:13px;padding:4px 12px;cursor:pointer;font-family:'Press Start 2P','Courier New',monospace;
+ touch-action:manipulation;flex:none}
+#backBtn:hover{background:#2a2a6a;box-shadow:0 0 10px rgba(90,90,220,.5)}
+#backBtn:active{background:#3a3a9a}
+h1{font-size:18px;color:#ffd23e;letter-spacing:3px;text-align:center;
+ text-shadow:0 0 14px rgba(255,210,62,.5),3px 3px 0 #7a5410}
+.spacer{width:70px;flex:none}
 /* the game window sits ABOVE the pad bar (--padH of screen is reserved for
    the controls, exactly like pacman.html / donkeykong.html) so the player
-   always sees the FULL play field */
-#stage{position:fixed;left:50%;bottom:var(--padH);transform:translateX(-50%);
- width:min(100vw,calc((100vh - var(--padH))*4/3));
- height:min(calc(100vh - var(--padH)),calc(100vw*3/4));
+   always sees the FULL play field — but anchored from the TOP, not the bottom */
+#stage{position:relative;flex:none;margin:0 auto;
+ width:min(100vw,calc((100vh - var(--padH) - var(--headH))*4/3));
+ height:min(calc(100vh - var(--padH) - var(--headH)),calc(100vw*3/4));
  background:#05050f;border:2px solid #223a8a;box-shadow:0 0 34px rgba(40,40,160,.4)}
 #bg3d{position:absolute;inset:0;width:100%;height:100%}
  #cv{position:absolute;inset:0;width:100%;height:100%;
@@ -60,7 +76,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
 #pauseOv div{font-size:22px;color:#ffd23e;letter-spacing:3px;line-height:2}
 #pauseOv .small{font-size:9px;color:#9a9ac0}
 /* ---------- touch pads (joystick + A/B) ---------- */
-:root{--joy:132px;--padbtn:64px;--padH:calc(var(--joy) + 36px)}
+:root{--joy:132px;--padbtn:64px;--padH:calc(var(--joy) + 36px);--headH:56px}
 /* the pads are their own bar UNDER the game window — never over the play field */
 #pads{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:20;
  align-items:center;justify-content:space-between;
@@ -106,6 +122,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
 </style>
 </head>
 <body>
+<div class="titlebar">
+  <button id="backBtn" type="button" title="Back to menu" onclick="location.href='index.html'">← Back</button>
+  <h1>POLE POSITION</h1>
+  <span class="spacer"></span>
+</div>
 <div id="stage">
   <canvas id="bg3d"></canvas>
   <canvas id="cv"></canvas>
@@ -409,6 +430,53 @@ function crashSound(){
 function jingle(kind){
  if(kind==='lap'){beep(660,.09);setTimeout(()=>beep(880,.09),90);setTimeout(()=>beep(1320,.16),180);}
  else if(kind==='finish'){[523,659,784,1046,1318].forEach((f,i)=>setTimeout(()=>beep(f,.14),i*110));}
+}
+/* ---------- brass fanfare — the "CHARGE!" / royal-announcement jingle ----------
+   Played FIRST when the race starts, BEFORE the blimp and the announcer.
+   100% WebAudio-synthesized brass horns:
+   - HORN VOICE: two slightly detuned sawtooths per note (a ±6-cent pair) —
+     the ensemble "spread" a trumpet section has
+   - BRASS COLOR: each note through a gentle lowpass with light resonance (Q),
+     the mellow "tubing" that turns a raw saw into a horn
+   - ARTICULATION: fast 40 ms attack swell, held body, firm release — how a
+     real horn breathes (attack → sustain → lift), not a plucked chiptune note
+   - MELDY: three staccato ascending stabs C–E–G ("charge! charge!"), then the
+     long held C-major chord with the top octave — the "taaa-daaaaa!"
+     of a fanfare / royal arrival */
+const FANFARE_LEN=1600;   /* ms — total length the jingle occupies (last note ends ~1.42s) */
+function brassNote(a,out,at,freq,dur,vol){
+ try{
+  const g=a.createGain();
+  g.gain.setValueAtTime(0.0001,at);
+  g.gain.exponentialRampToValueAtTime(vol,at+0.04);          /* fast brass attack */
+  g.gain.setValueAtTime(vol,at+dur*0.72);                     /* held body */
+  g.gain.exponentialRampToValueAtTime(0.0001,at+dur);         /* firm release */
+  const f=a.createBiquadFilter();
+  f.type='lowpass';f.frequency.value=Math.min(7000,freq*4.5);f.Q.value=1.4;
+  for(let i=0;i<2;i++){
+   const o=a.createOscillator();o.type='sawtooth';
+   o.frequency.value=freq*(i?1.006:0.994);                    /* detuned pair = horn section */
+   o.connect(f);
+   o.start(at);o.stop(at+dur+0.05);
+  }
+  f.connect(g);g.connect(out);
+ }catch(e){}
+}
+function playFanfare(){
+ if(!AC||muted)return false;
+ try{
+  const a=AC,t=a.currentTime+0.02;
+  const out=a.createGain();out.gain.value=0.85;out.connect(a.destination);
+  const C5=523.25,E5=659.25,G5=783.99,C6=1046.5;
+  /* the three "charge!" stabs — staccato, driving upward */
+  brassNote(a,out,t,     C5,0.16,0.20);
+  brassNote(a,out,t+0.18,E5,0.16,0.20);
+  brassNote(a,out,t+0.36,G5,0.22,0.22);
+  /* the royal "taaa-daaaaa!" — the held chord, top voice leading
+     (kept SHORT and soft — a long, loud final note gets fatiguing and blows out) */
+  [[C5,0.30],[E5,0.22],[G5,0.20],[C6,0.16]].forEach(p=>brassNote(a,out,t+0.62,p[0],0.8,p[1]));
+  return true;
+ }catch(e){return false;}
 }
 /* ---------- 8-bit sprites ---------- */
 /* rear-view F1: K=black (outline/tires) G=cockpit glass B=body  (18x13) */
@@ -2605,14 +2673,21 @@ if(typeof window!=='undefined'){
   }
  }catch(e){}
 }
+let raceToken=0;   /* guards the fanfare->blimp->announcer chain against a re-started race */
 function startRace(){
  buildTrack();resetAis();buildPuddles();   /* fresh random water layout for every race */
  pos=trackLen-4600;speed=0;playerX=-0.6;lapDone=0;lapTime=0;raceTime=0;firstLine=true;  /* hero LAST ON THE LEFT of the grid, line + gantry ahead */
  topSpeed=0;newBest=false;bounceT=0;paused=false;
  state='count';
  hide(titleOv);hide(finishOv);hide(pauseOv);show(hud);
- launchBlimp();                                   /* blimp takes to the sky as the line is about to speak */
- speakLine('Prepare to qualify!',runCountdown);   /* announcer FIRST, then the 3-2-1 lights */
+ const tok=++raceToken;
+ initAudio();
+ const played=playFanfare();                   /* BRASS FANFARE FIRST — the "charge!" anthem */
+ setTimeout(function(){
+  if(tok!==raceToken||state!=='count')return;  /* race restarted/bailed mid-fanfare: drop it */
+  launchBlimp();                               /* blimp takes to the sky as the line is about to speak */
+  speakLine('Prepare to qualify!',runCountdown);/* announcer, then the 3-2-1 lights */
+ },played?FANFARE_LEN:0);                       /* no fanfare (muted/no audio) = old immediate flow */
 }
 /* the 3-2-1-GO countdown, kicked off once the announcer line has finished */
 function runCountdown(){

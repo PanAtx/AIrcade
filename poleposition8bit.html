@@ -9,7 +9,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
 html,body{width:100%;height:100%;overflow:hidden;background:#000;
  font-family:'Press Start 2P','Courier New',monospace;color:#fff;
  touch-action:none;overscroll-behavior:none;-webkit-user-select:none;user-select:none}
@@ -112,6 +113,12 @@ h1{font-size:18px;color:#ffd23e;letter-spacing:3px;text-align:center;
 .pb-label{font-size:7px;letter-spacing:2px;color:#7a5a00}
 #muteBtn{width:38px;height:38px;border-radius:8px;flex:0 0 auto;
  background:#1c1c4a;color:#ffd23e;border:2px solid #3a3a9a;font-size:15px;cursor:pointer;font-family:inherit;pointer-events:auto}
+#pauseBtn,#restartBtn{width:38px;height:38px;border-radius:8px;flex:0 0 auto;
+ background:#1c1c4a;color:#ffd23e;border:2px solid #3a3a9a;font-size:15px;cursor:pointer;font-family:inherit;pointer-events:auto;
+ touch-action:manipulation}
+#pauseBtn:hover,#restartBtn:hover{background:#2a2a6a;box-shadow:0 0 10px rgba(90,90,220,.5)}
+#pauseBtn:active,#restartBtn:active{background:#3a3a9a}
+#pauseBtn.active{background:#4a4acc;color:#fff}
 @media (max-width:600px){
  .t-title{font-size:24px;letter-spacing:2px}
  .hbox{padding:4px 6px}
@@ -155,6 +162,8 @@ h1{font-size:18px;color:#ffd23e;letter-spacing:3px;text-align:center;
 <!-- pads live in their own bar UNDER the game window (like pacman / donkeykong) -->
 <div id="pads">
   <div id="joyBase"><div id="joyStick"></div><div id="joyKnob"></div></div>
+  <button id="pauseBtn" type="button" title="Pause (P)">⏸</button>
+  <button id="restartBtn" type="button" title="Restart (R)">↺</button>
   <button id="muteBtn" type="button" title="Mute (M)">♪</button>
   <div id="btnRow">
     <div class="pad-btn" id="gasBtn"><div class="pb-arrow"></div><span class="pb-letter">A</span><span class="pb-label">GAS</span></div>
@@ -188,6 +197,7 @@ const speedVal=$('speedVal'),speedFill=$('speedFill'),lapVal=$('lapVal'),posVal=
       timeVal=$('timeVal'),bestVal=$('bestVal'),hud=$('hud'),
       titleOv=$('titleOv'),countOv=$('countOv'),countEl=$('countEl'),
       finishOv=$('finishOv'),pauseOv=$('pauseOv'),muteBtn=$('muteBtn'),
+      pauseBtn=$('pauseBtn'),restartBtn=$('restartBtn'),
       joyBase=$('joyBase'),joyStickEl=$('joyStick'),joyKnob=$('joyKnob'),gasBtn=$('gasBtn'),brakeBtn=$('brakeBtn');
 /* ---------- world constants ---------- */
 const SEG_LEN=200,RUMBLE=3,ROAD_HALF=1000,CAM_H=1000;
@@ -2689,6 +2699,7 @@ function startRace(){
  buildTrack();resetAis();buildPuddles();   /* fresh random water layout for every race */
  pos=trackLen-4600;speed=0;playerX=-0.6;lapDone=0;lapTime=0;raceTime=0;firstLine=true;  /* hero LAST ON THE LEFT of the grid, line + gantry ahead */
  topSpeed=0;newBest=false;bounceT=0;paused=false;
+ pauseBtn.textContent='\u23F8';pauseBtn.classList.remove('active');   /* fresh race: pause button back to ⏸ */
  state='count';
  hide(titleOv);hide(finishOv);hide(pauseOv);show(hud);
  const tok=++raceToken;
@@ -2724,6 +2735,8 @@ function togglePause(){
  if(state!=='race')return;
  paused=!paused;
  pauseOv.classList.toggle('hidden',!paused);
+ pauseBtn.textContent=paused?'\u25B6':'\u23F8';   /* ▶ while paused, ⏸ while running (like pacman) */
+ pauseBtn.classList.toggle('active',paused);
 }
 /* ---------- input: keyboard ---------- */
 const keys={};
@@ -2873,6 +2886,11 @@ function toggleMute(){
  if(scrG)scrG.gain.setTargetAtTime(0,AC.currentTime,0.05);
 }
 muteBtn.addEventListener('pointerdown',e=>{e.preventDefault();initAudio();toggleMute();});
+pauseBtn.addEventListener('pointerdown',e=>{e.preventDefault();initAudio();
+ if(state==='title')onConfirm();          /* on the title screen, ⏸ starts the race — like pacman */
+ else if(state==='race')togglePause();
+});
+restartBtn.addEventListener('pointerdown',e=>{e.preventDefault();initAudio();startRace();});
 titleOv.addEventListener('pointerdown',()=>{if(state==='title')onConfirm();});
 finishOv.addEventListener('pointerdown',()=>{if(state==='finish'){hide(finishOv);toTitle();}});
 pauseOv.addEventListener('pointerdown',()=>{if(paused)togglePause();});

@@ -1,0 +1,2888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#05050f">
+<title>POLE POSITION 8-BIT — AI Arcade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;
+ font-family:'Press Start 2P','Courier New',monospace;color:#fff;
+ touch-action:none;overscroll-behavior:none;-webkit-user-select:none;user-select:none}
+/* the game window sits ABOVE the pad bar (--padH of screen is reserved for
+   the controls, exactly like pacman.html / donkeykong.html) so the player
+   always sees the FULL play field */
+#stage{position:fixed;left:50%;bottom:var(--padH);transform:translateX(-50%);
+ width:min(100vw,calc((100vh - var(--padH))*4/3));
+ height:min(calc(100vh - var(--padH)),calc(100vw*3/4));
+ background:#05050f;border:2px solid #223a8a;box-shadow:0 0 34px rgba(40,40,160,.4)}
+#bg3d{position:absolute;inset:0;width:100%;height:100%}
+ #cv{position:absolute;inset:0;width:100%;height:100%;
+ image-rendering:-moz-crisp-edges;image-rendering:pixelated}
+.hidden{display:none!important}
+/* ---------- HUD (speed left / lap center / time right, like the arcade) ---------- */
+#hud{position:absolute;left:10px;top:8px;right:10px;z-index:6;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none}
+#hud>div:nth-child(2){text-align:center}
+#hud>.hbox:last-child{text-align:right}
+.hlabel{color:#7fa8ff;font-size:8px;letter-spacing:1px;margin-bottom:4px}
+.hbox{background:rgba(5,8,26,.72);border:2px solid #2a4a9a;padding:6px 8px}
+#speedVal{font-size:20px;color:#ffd23e;line-height:1.2}
+.hunit{font-size:7px;color:#7fa8ff;margin-top:3px}
+.speedbar{margin-top:4px;height:6px;background:#0a0f2a;border:1px solid #2a4a9a}
+#speedFill{height:100%;width:0;background:linear-gradient(90deg,#2ecc71,#ffd23e,#ff4040)}
+#lapVal{font-size:16px;color:#fff}
+#posVal{font-size:12px;color:#3ef5c8;margin-top:4px}
+#timeVal{font-size:14px;color:#fff}
+#bestVal{font-size:9px;color:#ffd23e;margin-top:4px}
+/* ---------- overlays ---------- */
+.ov{position:absolute;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;background:rgba(3,5,18,.6);text-align:center;padding:12px}
+.t-sub{font-size:10px;color:#7fa8ff;letter-spacing:4px;margin-bottom:14px}
+.t-title{font-size:34px;line-height:1.5;color:#ffd23e;letter-spacing:4px;
+ text-shadow:0 3px 0 #b06000,0 6px 0 #6a3400,0 0 24px rgba(255,180,0,.45)}
+.t-sub2{font-size:11px;color:#fff;letter-spacing:2px;margin-top:14px}
+.press{font-size:11px;color:#fff;margin-top:24px;letter-spacing:1px}
+.ctrls{font-size:8px;color:#8a8ab0;line-height:2.2;margin-top:18px;letter-spacing:1px}
+#gpStat{font-size:8px;color:#8a8ab0;margin-top:14px;letter-spacing:1px}
+#gpStat.on{color:#3ef5c8}
+.blink{animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.big-res{font-size:44px;margin:12px 0;text-shadow:0 4px 0 rgba(0,0,0,.6)}
+.big-res.gold{color:#ffd23e}
+.stat{font-size:10px;color:#e8e8f8;margin:7px 0}
+#countOv{background:rgba(3,5,18,.25)}
+#countEl{font-size:56px;color:#ffd23e;text-shadow:0 5px 0 rgba(0,0,0,.6);opacity:0}
+#countEl.pop{animation:cpop .85s ease-out forwards}
+@keyframes cpop{0%{opacity:0;transform:scale(2.2)}25%{opacity:1;transform:scale(1)}100%{opacity:1;transform:scale(1)}}
+#pauseOv div{font-size:22px;color:#ffd23e;letter-spacing:3px;line-height:2}
+#pauseOv .small{font-size:9px;color:#9a9ac0}
+/* ---------- touch pads (joystick + A/B) ---------- */
+:root{--joy:132px;--padbtn:64px;--padH:calc(var(--joy) + 36px)}
+/* the pads are their own bar UNDER the game window — never over the play field */
+#pads{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:20;
+ align-items:center;justify-content:space-between;
+ padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+ background:#070718;border-top:2px solid #2a4a9a;pointer-events:none}
+#joyBase{position:relative;width:var(--joy);height:var(--joy);border-radius:50%;
+ background:radial-gradient(circle at 50% 38%,#23236a 0%,#12123a 72%);
+ border:2px solid #3a3a9a;box-shadow:inset 0 0 20px rgba(0,0,0,.65),0 0 14px rgba(60,60,180,.35);
+ pointer-events:auto;touch-action:none;user-select:none;cursor:pointer}
+#joyBase.active{border-color:#5555e0;box-shadow:inset 0 0 20px rgba(0,0,0,.5),0 0 18px rgba(90,90,220,.55)}
+#joyStick{position:absolute;left:50%;top:50%;width:14px;height:calc(var(--joy)*.29);
+ margin-left:-7px;margin-top:calc(var(--joy)*-.29);border-radius:7px;
+ background:linear-gradient(90deg,#33353d 0%,#8d93a2 25%,#e8ecf4 48%,#f4f6fa 54%,#7d8392 78%,#2c2e35 100%);
+ box-shadow:0 2px 6px rgba(0,0,0,.6);transform-origin:50% 100%;transform:rotate(0deg) scaleY(0)}
+#joyKnob{position:absolute;left:50%;top:50%;width:calc(var(--joy)*.41);height:calc(var(--joy)*.41);
+ margin-left:calc(var(--joy)*-.205);margin-top:calc(var(--joy)*-.205);border-radius:50%;
+ background:radial-gradient(circle at 35% 30%,#ff9d9d 0%,#ff2a2a 45%,#a80f0f 90%);
+ border:2px solid #7a0a0a;box-shadow:0 4px 10px rgba(0,0,0,.55);will-change:transform}
+#joyBase.active #joyKnob{background:radial-gradient(circle at 35% 30%,#ffc9c9 0%,#ff4444 55%,#9c0c0c 95%);
+ border-color:#ff6b6b}
+#btnRow{display:flex;gap:14px;pointer-events:none;padding-bottom:4px}
+.pad-btn{position:relative;width:var(--padbtn);height:var(--padbtn);border-radius:50%;pointer-events:auto;
+ touch-action:none;background:radial-gradient(circle at 35% 30%,#fff3a0 0%,#ffd400 45%,#c78f00 100%);
+ border:3px solid #8a6a00;box-shadow:inset 0 -8px 14px rgba(120,80,0,.55),0 6px 14px rgba(0,0,0,.5),0 0 18px rgba(255,210,0,.4);
+ display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;user-select:none}
+.pad-btn:active,.pad-btn.active{filter:brightness(1.15);transform:scale(.95)}
+.pb-arrow{width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-bottom:16px solid #7a5a00}
+.pb-arrow.down{transform:rotate(180deg)}
+.pb-letter{font-size:15px;color:#6a4e00;line-height:1}
+.pb-label{font-size:7px;letter-spacing:2px;color:#7a5a00}
+#muteBtn{width:38px;height:38px;border-radius:8px;flex:0 0 auto;
+ background:#1c1c4a;color:#ffd23e;border:2px solid #3a3a9a;font-size:15px;cursor:pointer;font-family:inherit;pointer-events:auto}
+@media (max-width:600px){
+ .t-title{font-size:24px;letter-spacing:2px}
+ .hbox{padding:4px 6px}
+ #speedVal{font-size:15px}
+ #lapVal{font-size:12px}
+ #timeVal{font-size:11px}
+ #countEl{font-size:40px}
+ .big-res{font-size:32px}
+ :root{--joy:110px;--padbtn:56px}
+}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="bg3d"></canvas>
+  <canvas id="cv"></canvas>
+  <div id="hud" class="hidden">
+    <div class="hbox"><div class="hlabel">SPEED</div><div id="speedVal">0</div><div class="hunit">KMH</div><div class="speedbar"><div id="speedFill"></div></div></div>
+    <div><div class="hlabel">LAP</div><div id="lapVal">1/3</div><div id="posVal">4TH</div></div>
+    <div class="hbox"><div class="hlabel">TIME</div><div id="timeVal">0:00.00</div><div class="hlabel">BEST LAP</div><div id="bestVal">--:--</div></div>
+  </div>
+  <div id="titleOv" class="ov">
+    <div>
+      <div class="t-sub">NAMCO-STYLE • 8-BIT</div>
+      <div class="t-title">POLE<br>POSITION</div>
+      <div class="t-sub2">3 LAPS • BEAT THE CLOCK</div>
+      <div class="press blink">PRESS ENTER / GAMEPAD START / TAP TO START</div>
+      <div class="ctrls">STEER ◄ ► · JOYSTICK · GAMEPAD STICK / D-PAD<br>GAS ▲ (A) · BRAKE ▼ (B) · START PAUSE · M MUTE</div>
+      <div id="gpStat">GAMEPAD: …</div>
+    </div>
+  </div>
+  <div id="countOv" class="ov hidden"><div id="countEl">3</div></div>
+  <div id="finishOv" class="ov hidden"></div>
+  <div id="pauseOv" class="ov hidden"><div>PAUSED<div class="small">PRESS P OR TAP TO RESUME</div></div></div>
+</div>
+<!-- pads live in their own bar UNDER the game window (like pacman / donkeykong) -->
+<div id="pads">
+  <div id="joyBase"><div id="joyStick"></div><div id="joyKnob"></div></div>
+  <button id="muteBtn" type="button" title="Mute (M)">♪</button>
+  <div id="btnRow">
+    <div class="pad-btn" id="gasBtn"><div class="pb-arrow"></div><span class="pb-letter">A</span><span class="pb-label">GAS</span></div>
+    <div class="pad-btn" id="brakeBtn"><div class="pb-arrow down"></div><span class="pb-letter">B</span><span class="pb-label">BRAKE</span></div>
+  </div>
+</div>
+<script>
+/* =====================================================================
+   POLE POSITION 8-BIT — pure HTML5 canvas pseudo-3D arcade racer.
+   Low-res 192x144 buffer, limited palette, pixel sprites, no libraries.
+   ===================================================================== */
+(function(){
+'use strict';
+/* ---------- helpers ---------- */
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+const show=el=>el.classList.remove('hidden');
+const hide=el=>el.classList.add('hidden');
+const ORD=['1ST','2ND','3RD','4TH','5TH','6TH'];
+function hexRgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}
+function fmt(ms){if(!ms)return'--:--';
+ const m=Math.floor(ms/60000),s=Math.floor(ms%60000/1000),c=Math.floor(ms%1000/10);
+ return m+':'+String(s).padStart(2,'0')+'.'+String(c).padStart(2,'0');}
+/* ---------- dom ---------- */
+const cv=$('cv'),ctx=cv.getContext('2d');
+const VW=192,VH=144,HZ=54;           /* horizon ~38% down — road fills most of the screen, like the arcade */
+const FOCAL_V=VH-HZ;                 /* vertical focal so the player plane still lands at the bottom */
+cv.width=VW;cv.height=VH;
+ctx.imageSmoothingEnabled=false;
+const speedVal=$('speedVal'),speedFill=$('speedFill'),lapVal=$('lapVal'),posVal=$('posVal'),
+      timeVal=$('timeVal'),bestVal=$('bestVal'),hud=$('hud'),
+      titleOv=$('titleOv'),countOv=$('countOv'),countEl=$('countEl'),
+      finishOv=$('finishOv'),pauseOv=$('pauseOv'),muteBtn=$('muteBtn'),
+      joyBase=$('joyBase'),joyStickEl=$('joyStick'),joyKnob=$('joyKnob'),gasBtn=$('gasBtn'),brakeBtn=$('brakeBtn');
+/* ---------- world constants ---------- */
+const SEG_LEN=200,RUMBLE=3,ROAD_HALF=1000,CAM_H=1000;
+const CAM_D=1/Math.tan(50*Math.PI/180);   /* 100° fov */
+const DRAW_DIST=140,LAPS=3;
+const MAX_SPEED=9000,ACCEL=3900,BRAKE=16000,DRAG_K=ACCEL/(MAX_SPEED*MAX_SPEED);
+const STEER_SCRUB=0.32;   /* turning has a price: a second of FULL lock at speed bleeds ~27% —
+                            hard corners scrub speed off the tyres (short taps barely notice) */
+const CAR_WORLD=375;   /* AI car world width — set so an AI car is EXACTLY the same size as the
+                         player car when side-by-side at the same Z (bottom row):
+                         (playerW 36px / half-road 96px) * ROAD_HALF 1000 = 375.
+                         Before (287) rivals rendered ~24% smaller than the player at the same Z. */
+const PAL={grassA:'#3f8a2e',grassB:'#35751f',roadA:'#c9c9c9',roadB:'#b3b3b3',
+ rumA:'#e03428',rumB:'#f2f2f2',lane:'#f8f8f8',black:'#14141c',haze:[176,198,222]};
+/* ---------- track (Fuji-flavored loop: corners, chicane, hills) ---------- */
+const segs=[];
+let trackLen=0;
+function lastY(){return segs.length?segs[segs.length-1].p2[1]:0;}
+function addSeg(c,y1,y2){
+ segs.push({i:segs.length,c,p1:[0,y1,segs.length*SEG_LEN],p2:[0,y2,(segs.length+1)*SEG_LEN]});}
+function easeIn(a,b,t){return a+(b-a)*t*t;}
+function easeIO(a,b,t){return a+(b-a)*(0.5-Math.cos(t*Math.PI)/2);}
+function addRoad(en,ho,le,curve,dy){
+ const s0=lastY(),s1=s0+dy,total=en+ho+le,pts=[];
+ for(let k=0;k<=total;k++){
+  const c=k<=en?easeIn(0,curve,k/Math.max(1,en))
+        :(k<=en+ho?curve:easeIO(curve,0,(k-en-ho)/Math.max(1,le)));
+  pts.push([c,easeIO(s0,s1,k/total)]);
+ }
+ for(let k=0;k<total;k++)addSeg(pts[k][0],pts[k][1],pts[k+1][1]);
+}
+function buildTrack(){
+ segs.length=0;
+ addRoad(12,30,12,  0,    0);   /* start straight: FLAT & STRAIGHT — grid, checkered line, START gate */
+ addRoad(16,30,16,  2.0, 600);  /* right, up      */
+ addRoad(12,20,12,  0, -400);
+ addRoad(14,22,14, -2.8,  0);   /* left kink      */
+ addRoad(14,22,14,  2.6,-800);  /* right kink, dn */
+ addRoad(22,40,22,  0, 3200);   /* long climb     */
+ addRoad(18,50,18, -2.4,-2200); /* left sweep dn  */
+ addRoad(12,26,12,  0,    0);   /* back straight  */
+ addRoad(16,30,16,  4.0,  0);   /* hairpin right  */
+ addRoad(18,32,18, -2.8,-900);
+ addRoad(14,26,14,  1.6, 800);
+ addRoad(16,30,16, -2.4,-300);
+ addRoad(14,26,14,  1.5, 0);    /* final approach: gentle and FLAT into the line */
+ addRoad(18,36,18,  0,    0);   /* grid straight: FLAT & STRAIGHT so the grid, line and gate read clean */
+ trackLen=segs.length*SEG_LEN;  /* elevation sums to exactly 0 — the loop closes with no lap-boundary jump */
+}
+function curveAt(p){
+ const pp=((p%trackLen)+trackLen)%trackLen;
+ return segs[Math.floor(pp/SEG_LEN)%segs.length].c;
+}
+/* ---------- chiptune audio (WebAudio, no assets) ---------- */
+let AC=null,engO1=null,engO2=null,engG=null,scrO=null,scrS=null,scrF=null,scrF2=null,scrG=null,muted=false;
+function initAudio(){
+ if(AC){if(AC.state==='suspended')AC.resume();return;}
+ try{
+  AC=new (window.AudioContext||window.webkitAudioContext)();
+  engG=AC.createGain();engG.gain.value=0;
+  const flt=AC.createBiquadFilter();flt.type='lowpass';flt.frequency.value=1200;
+  engO1=AC.createOscillator();engO1.type='square';
+  engO2=AC.createOscillator();engO2.type='sawtooth';
+  engO1.connect(flt);engO2.connect(flt);flt.connect(engG);engG.connect(AC.destination);
+  engO1.start();engO2.start();
+  /* tyre screech — a BASSY RUBBER "ERRRRRRR": the low growl of rubber sliding
+     on asphalt, with NO echo tail. Ingredients:
+     - BASS CORE: sawtooth (rich in harmonics) through a MEDIUM band-pass at
+       300–620 Hz — the low "E" of "errr", the rubbery growl that carries it
+     - GRIT LAYER: high noise band (5.5–8 kHz) for the "rrrr" friction hiss,
+       with only a SUBTLE 18 Hz flutter (heavy flutter read as a wah-wah echo)
+     - ALMOST NO VIBRATO: small fast jitter (27 Hz ±25, 41 Hz ±15) keeps it
+       alive without warble — big warble is what "wa-wa-wa"'s like an echo
+     - TIGHT RELEASE: 0.035 s off — the old 0.1 s tail WAS the "reverb"
+     - SOFT BITE: each fresh squeal opens with a small 1.2x pitch dip,
+       re-triggered only after 250 ms of silence (flicker re-triggers
+       sounded like repeated echoes)
+     setScreech() ramps it in/out each frame from how hard + fast you steer */
+  const nb=AC.createBuffer(1,Math.floor(AC.sampleRate*0.6),AC.sampleRate);
+  const nd=nb.getChannelData(0);
+  for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
+  scrO=AC.createOscillator();scrO.type='sawtooth';scrO.frequency.value=320;
+  scrF=AC.createBiquadFilter();scrF.type='bandpass';scrF.frequency.value=320;scrF.Q.value=8;
+  const gT=AC.createGain();gT.gain.value=0.8;
+  scrO.connect(scrF);scrF.connect(gT);
+  scrS=AC.createBufferSource();scrS.buffer=nb;scrS.loop=true;
+  scrF2=AC.createBiquadFilter();scrF2.type='bandpass';scrF2.frequency.value=7000;scrF2.Q.value=3;
+  const gR=AC.createGain();gR.gain.value=0.22;
+  const flut=AC.createOscillator();flut.frequency.value=18;   /* subtle flutter on the grit — friction, not wah-wah */
+  const flutD=AC.createGain();flutD.gain.value=0.08;
+  flut.connect(flutD);flutD.connect(gR.gain);flut.start();
+  scrS.connect(scrF2);scrF2.connect(gR);
+  const l1=AC.createOscillator();l1.frequency.value=27;       /* small fast jitter — alive, but no warble/echo */
+  const d1=AC.createGain();d1.gain.value=25;
+  l1.connect(d1);d1.connect(scrO.frequency);d1.connect(scrF.frequency);
+  const l2=AC.createOscillator();l2.frequency.value=41;       /* off-beat shimmer */
+  const d2=AC.createGain();d2.gain.value=15;
+  l2.connect(d2);d2.connect(scrO.frequency);
+  l1.start();l2.start();
+  scrG=AC.createGain();scrG.gain.value=0;
+  gT.connect(scrG);gR.connect(scrG);scrG.connect(AC.destination);
+  scrO.start();scrS.start();
+ }catch(e){AC=null;}
+}
+let scrPrevLvl=0,scrOffAt=-9;
+function setScreech(level){
+ if(!AC||!scrG)return;
+ if(muted||state!=='race'&&state!=='count')level=0;
+ level=clamp(level,0,1);
+ const wasOn=scrPrevLvl>0.12;
+ if(level<0.12)level=0;   /* light steering stays silent — the squeal needs speed AND lock */
+ scrPrevLvl=level;
+ if(level===0)scrOffAt=AC.currentTime;   /* last time it went fully off — gates the bite re-trigger */
+ const t=AC.currentTime;
+ scrG.gain.setTargetAtTime(level?0.05+level*0.17:0,t,level?0.012:0.035);   /* instant bite, tight off — no tail/reverb */
+ const ft=300+320*level;   /* the bass growl rises with intensity: 300 -> 620 Hz */
+ scrO.frequency.setTargetAtTime(ft,t,0.05);
+ scrF.frequency.setTargetAtTime(ft,t,0.05);
+ scrF2.frequency.setTargetAtTime(5500+2500*level,t,0.05);   /* the "rrr" friction rides above the growl */
+ if(level>0.12&&!wasOn&&t-scrOffAt>0.25){    /* fresh squeal: small 1.2x dip, only after a real break */
+  try{
+   scrO.frequency.setValueAtTime(ft*1.2,t);
+   scrO.frequency.exponentialRampToValueAtTime(ft,t+0.06);
+   scrF.frequency.setValueAtTime(ft*1.2,t);
+   scrF.frequency.exponentialRampToValueAtTime(ft,t+0.06);
+  }catch(e){}
+ }
+}
+function setEngine(sr,gas){
+ if(!AC)return;
+ if(muted||state!=='race'&&state!=='count'){engG.gain.setTargetAtTime(0,AC.currentTime,0.1);return;}
+ const f=42+sr*148+(gas?6:0);
+ engO1.frequency.setTargetAtTime(f,AC.currentTime,0.06);
+ engO2.frequency.setTargetAtTime(f*1.5+2,AC.currentTime,0.06);
+ engG.gain.setTargetAtTime(0.02+sr*0.035,AC.currentTime,0.09);
+}
+function beep(freq,dur,type,vol){
+ if(!AC||muted)return;
+ try{
+  const o=AC.createOscillator(),g=AC.createGain();
+  o.type=type||'square';o.frequency.value=freq;
+  g.gain.setValueAtTime(vol||0.12,AC.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+dur);
+  o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+dur);
+ }catch(e){}
+}
+let crunchAt=-9;
+function crunchSound(hard){
+ /* car-to-car CRUNCH — metal + plastic impact, 100% synthesized:
+    - METAL CLANG: two detuned square waves pitched DOWN through a bandpass (plate/shing)
+    - PLASTIC CRUNCH: band-passed noise with random per-sample depth = gravel crackle
+    - BODY THUD: fast sine drop 150->55 Hz (the chassis taking the hit)
+    hard=1 tailgate, 0 side swipe */
+ if(!AC||muted)return;
+ const t=AC.currentTime;
+ if(t-crunchAt<0.12)return;                    /* never double-crunch in the same instant */
+ crunchAt=t;
+ try{
+  const v=hard?1:0.65;
+  [[2350,.17,.10],[3700,.12,.07]].forEach(p=>{
+   const o=AC.createOscillator();o.type='square';
+   o.frequency.setValueAtTime(p[0],t);
+   o.frequency.exponentialRampToValueAtTime(p[0]*.32,t+p[1]);
+   const bf=AC.createBiquadFilter();bf.type='bandpass';bf.frequency.value=p[0]*.75;bf.Q.value=5;
+   const g=AC.createGain();
+   g.gain.setValueAtTime(p[2]*v,t);
+   g.gain.exponentialRampToValueAtTime(.001,t+p[1]);
+   o.connect(bf);bf.connect(g);g.connect(AC.destination);
+   o.start(t);o.stop(t+p[1]+.02);
+  });
+  const nb=AC.createBuffer(1,Math.max(1,Math.floor(AC.sampleRate*.22)),AC.sampleRate);
+  const nd=nb.getChannelData(0);
+  for(let i=0;i<nd.length;i++)nd[i]=(Math.random()*2-1)*(.35+.65*Math.random());  /* random depth = crackle */
+  const ns=AC.createBufferSource();ns.buffer=nb;
+  const bf2=AC.createBiquadFilter();bf2.type='bandpass';bf2.frequency.value=1150;bf2.Q.value=1.4;
+  const g2=AC.createGain();
+  g2.gain.setValueAtTime(.30*v,t);
+  g2.gain.exponentialRampToValueAtTime(.001,t+.20);
+  ns.connect(bf2);bf2.connect(g2);g2.connect(AC.destination);
+  ns.start(t);
+  const o2=AC.createOscillator();o2.type='sine';
+  o2.frequency.setValueAtTime(150,t);
+  o2.frequency.exponentialRampToValueAtTime(55,t+.12);
+  const g3=AC.createGain();
+  g3.gain.setValueAtTime(.24*v,t);
+  g3.gain.exponentialRampToValueAtTime(.001,t+.15);
+  o2.connect(g3);g3.connect(AC.destination);
+  o2.start(t);o2.stop(t+.16);
+ }catch(e){}
+}
+let crashAt=-9;
+function crashSound(){
+ /* CAR HITS A BILLBOARD POST — a big, LOUD impact, 100% synthesized and clearly
+    harder than the car-to-car crunch (bigger hit = bigger crash):
+    - BODY THUD:  heavy sine drop 120->36 Hz — the whole chassis slamming the frame
+    - METAL SCREECH: three detuned sawtooths pitched DOWN through a bandpass —
+      the steel post shrieking ("shiiiing"), sustained ~0.5s, the signature sound
+    - DEBRIS RATTLE: band-passed noise with random per-sample depth — shards +
+      plastic crackle scattering off the body
+    - PING: a high ringing overtone — the post ringing like a struck bell */
+ if(!AC||muted)return;
+ const t=AC.currentTime;
+ if(t-crashAt<0.15)return;                    /* never double-crash in the same instant */
+ crashAt=t;
+ try{
+  const o0=AC.createOscillator();o0.type='sine';
+  o0.frequency.setValueAtTime(120,t);
+  o0.frequency.exponentialRampToValueAtTime(36,t+0.34);
+  const g0=AC.createGain();
+  g0.gain.setValueAtTime(0.55,t);
+  g0.gain.exponentialRampToValueAtTime(0.001,t+0.38);
+  o0.connect(g0);g0.connect(AC.destination);o0.start(t);o0.stop(t+0.4);
+  [[2600,.5,.16],[3900,.42,.12],[1500,.55,.10]].forEach(p=>{
+   const o=AC.createOscillator();o.type='sawtooth';
+   o.frequency.setValueAtTime(p[0],t);
+   o.frequency.exponentialRampToValueAtTime(p[0]*0.4,t+p[1]);
+   const bf=AC.createBiquadFilter();bf.type='bandpass';bf.frequency.value=p[0]*0.8;bf.Q.value=6;
+   const g=AC.createGain();
+   g.gain.setValueAtTime(p[2],t);
+   g.gain.exponentialRampToValueAtTime(0.001,t+p[1]);
+   o.connect(bf);bf.connect(g);g.connect(AC.destination);
+   o.start(t);o.stop(t+p[1]+.02);
+  });
+  const nb=AC.createBuffer(1,Math.max(1,Math.floor(AC.sampleRate*0.55)),AC.sampleRate);
+  const nd=nb.getChannelData(0);
+  for(let i=0;i<nd.length;i++)nd[i]=(Math.random()*2-1)*(.3+.7*Math.random());   /* random depth = crackle */
+  const ns=AC.createBufferSource();ns.buffer=nb;
+  const bf2=AC.createBiquadFilter();bf2.type='bandpass';bf2.frequency.value=1400;bf2.Q.value=1.2;
+  const g2=AC.createGain();
+  g2.gain.setValueAtTime(0.42,t);
+  g2.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+  ns.connect(bf2);bf2.connect(g2);g2.connect(AC.destination);
+  ns.start(t);
+  const o3=AC.createOscillator();o3.type='triangle';
+  o3.frequency.setValueAtTime(2400,t);
+  o3.frequency.exponentialRampToValueAtTime(1900,t+0.5);
+  const g3=AC.createGain();
+  g3.gain.setValueAtTime(0.05,t);
+  g3.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+  o3.connect(g3);g3.connect(AC.destination);o3.start(t);o3.stop(t+0.52);
+ }catch(e){}
+}
+function jingle(kind){
+ if(kind==='lap'){beep(660,.09);setTimeout(()=>beep(880,.09),90);setTimeout(()=>beep(1320,.16),180);}
+ else if(kind==='finish'){[523,659,784,1046,1318].forEach((f,i)=>setTimeout(()=>beep(f,.14),i*110));}
+}
+/* ---------- 8-bit sprites ---------- */
+/* rear-view F1: K=black (outline/tires) G=cockpit glass B=body  (18x13) */
+const CARMAP=[
+".....KKKKKKKK.....",
+"....KGGGGGGGGK....",
+"...KGGGGGGGGGGK...",
+"KKKKKKKKKKKKKKKKKK",
+"KBBBBBBBBBBBBBBBBK",
+"KBBBBBBBBBBBBBBBBK",
+"KBBBBBBBBBBBBBBBBK",
+"..KKBBBBBBBBBBKK..",
+".KKKKBBBBBBBBKKKK.",
+".KKKKBBBBBBBBKKKK.",
+".KKKKBBBBBBBBKKKK.",
+".KKKKBBBBBBBBKKKK.",
+"KKKKKBBBBBBBBKKKKK"];
+const carCache={};
+function carSprite(col){
+ if(carCache[col])return carCache[col];
+ const c=document.createElement('canvas');c.width=18;c.height=13;
+ const g=c.getContext('2d');
+ for(let y=0;y<13;y++)for(let x=0;x<18;x++){
+  const ch=CARMAP[y][x];if(ch==='.')continue;
+  g.fillStyle=ch==='K'?'#14141c':(ch==='G'?'#9aa3b2':col);
+  g.fillRect(x,y,1,1);
+ }
+ carCache[col]=c;return c;
+}
+let playerSpr=null,skyCv=null,cloudCv=null,farCv=null,nearCv=null;
+const clouds=[{x:34,y:11,s:2.1,d:330},{x:112,y:26,s:1.5,d:300},{x:170,y:6,s:1.15,d:360}];
+let bgFar=0,bgNear=0;
+function makeSky(){
+ skyCv=document.createElement('canvas');skyCv.width=VW;skyCv.height=VH;
+ const g=skyCv.getContext('2d');
+ const bands=[[0,[24,70,186]],[0.40,[62,124,214]],[0.68,[142,192,238]],
+              [0.88,[188,220,248]],[1,[214,235,252]]];   /* clean 8-bit blue sky, pale at the horizon */
+ const colAt=f=>{for(let i=bands.length-1;i>=0;i--)if(f>=bands[i][0])return bands[i][1];return bands[0][1];};
+ const rgb=c=>'rgb('+c[0]+','+c[1]+','+c[2]+')';
+ for(let y=0;y<HZ;y++){
+  const f=y/HZ,cLo=colAt(f);
+  let i=0;while(i<bands.length-1&&f>bands[i+1][0])i++;
+  const bd=bands[i+1]?bands[i+1][0]:1,cHi=bands[i+1]?bands[i+1][1]:cLo;
+  if(f>bd-0.028){ /* dithered transition row — very 8-bit */
+   const a=rgb(cLo),b2=rgb(cHi);
+   for(let x=0;x<VW;x+=2){g.fillStyle=((x/2+y)&1)?a:b2;g.fillRect(x,y,2,1);}
+  }else{g.fillStyle=rgb(cLo);g.fillRect(0,y,VW,1);}
+ }
+ /* pre-paint everything below the horizon with the far-forest green
+    (matches the far ridge): any row the road doesn't reach — e.g. the road
+    dipping over a crest — shows forest, NOT a pale bar or last frame's
+    leftover road pixels (the old "light grey bar" / ghost track) */
+ g.fillStyle='#5b7f57';
+ g.fillRect(0,HZ,VW,VH-HZ);
+ const px=(cx,cy,r,col)=>{g.fillStyle=col;
+  for(let y=-r;y<=r;y++)for(let x=-r;x<=r;x++)
+   if(x*x+y*y<=r*r+1)g.fillRect(cx+x,cy+y,1,1);};
+ px(VW-30,16,7,'#ffcf3e');px(VW-30,16,5,'#fff0b4');  /* pixel sun */
+}
+function makeClouds(){
+ cloudCv=document.createElement('canvas');cloudCv.width=20;cloudCv.height=7;
+ const g=cloudCv.getContext('2d');
+const m=['......KKKKKKKK......','....KKKKKKKKKKKK....','...KKKKKKKKKKKKKK...','KKKKKKKKKKKKKKKKKKKK','KKKKKKKKKKKKKKKKKKKK'];
+ for(let y=0;y<m.length;y++)for(let x=0;x<20;x++)
+  if(m[y][x]==='K'){g.fillStyle=y<2?'#ffffff':'#d6e6fa';g.fillRect(x,y,1,1);}
+}
+function ridge(color,minH,maxH,step,fillTo){
+ /* fillTo: how far DOWN the silhouette fills. Rows below the horizon that the
+    road doesn't cover (road dipping over a crest) reveal this — so the
+    treelines run all the way down into the gap instead of a pale bar */
+ const c=document.createElement('canvas');c.width=VW*2;c.height=fillTo;
+ const g=c.getContext('2d');let h=(minH+maxH)>>1;
+ for(let x=0;x<VW*2;x+=step){
+  h+=((Math.random()*2-1)*5)|0;
+  if(h<minH)h=minH;if(h>maxH)h=maxH;
+  h=Math.round(h/2)*2;               /* quantized steps = jagged 8-bit hills */
+  g.fillStyle=color;g.fillRect(x,HZ-h,step,fillTo-(HZ-h));
+ }
+ return c;
+}
+function makeRidges(){
+ farCv=ridge('#5b7f57',16,34,4,VH);      /* far forest: fills to the bottom of the screen */
+ nearCv=ridge('#3d6633',8,24,3,HZ+16);   /* near treeline: extends a little past the horizon */
+}
+function drawRidge(c,off){
+ const w=c.width,o=((off%w)+w)%w;
+ ctx.drawImage(c,-o,0);ctx.drawImage(c,w-o,0);
+}
+function stepClouds(dt,c,sr){
+ for(const cl of clouds){
+  cl.x-=(2.5+c*sr*9)*dt*cl.s;
+  if(cl.x<-40)cl.x=VW+20;
+  if(cl.x>VW+30)cl.x=-30;
+ }
+}
+function drawClouds(){
+ for(const cl of clouds){
+  const w=Math.round(20*cl.s),h=Math.round(7*cl.s);
+  ctx.drawImage(cloudCv,Math.round(cl.x),cl.y,w,h);
+ }
+}
+/* ---------- advertising BLIMP with a "PREPARE TO QUALIFY!" banner ----------
+   An 8-bit airship that flies RIGHT -> LEFT across the sky, launched right
+   before (and through) the synthesized "Prepare to qualify!" announcer line.
+   The sprite is pre-rendered to a low-res offscreen canvas in the SAME 192x144
+   units as the game buffer, so it upscales pixel-crisp like everything else.
+    The backing canvas is 3x-supersampled and downscaled on draw, so the
+    banner text stays smooth and readable instead of blocky pixelation. */
+let blimpCv=null,blimpW=0,blimpH=0;
+const BLIMP_SCALE=0.7;                  /* drawn at 70%: smaller reads as farther away */
+const BLIMP={active:false,x:0,phase:0};
+const BLIMP_SPEED=100;                 /* virtual px/s -> crosses the screen in ~3s,
+                                          keeping it on screen through the whole line */
+function makeBlimp(){
+ if(blimpCv)return;
+ try{
+  const FONT="9px 'Press Start 2P','Courier New',monospace";
+  const L1='PREPARE TO',L2='QUALIFY!';
+  const m=document.createElement('canvas').getContext('2d');
+  m.font=FONT;
+  const tw=Math.max(m.measureText(L1).width,m.measureText(L2).width);
+  const pad=7,bagW=34,gap=6;
+  const bannerW=Math.ceil(tw)+pad*2,bannerH=26;
+  const W=bagW+gap+bannerW,H=34;
+  blimpCv=document.createElement('canvas');blimpCv.width=W*3;blimpCv.height=H*3;
+  blimpW=W;blimpH=H;
+  const g=blimpCv.getContext('2d');g.scale(3,3);
+  const bx=bagW/2,by=15,bxr=bagW+gap;
+  const FULL=Math.PI*2;
+  /* tethers (behind everything) from the bag to the banner */
+  g.strokeStyle='#9fb0d8';g.lineWidth=1;
+  g.beginPath();g.moveTo(bx+11,by-1);g.lineTo(bxr,7);g.stroke();
+  g.beginPath();g.moveTo(bx+11,by+1);g.lineTo(bxr,bannerH+2);g.stroke();
+  /* --- gasbag --- */
+  g.fillStyle='#20305e';g.beginPath();g.ellipse(bx,by,15,8,0,0,FULL);g.fill();      /* dark rim */
+  g.fillStyle='#eef3ff';g.beginPath();g.ellipse(bx,by,14,7,0,0,FULL);g.fill();      /* body  */
+  g.fillStyle='#c2d0ec';g.beginPath();g.ellipse(bx,by+2.5,13,4.5,0,0,Math.PI);g.fill();/* belly shade */
+  g.fillStyle='#fff6cf';g.beginPath();g.ellipse(bx-2,by-3,6,2,0,0,FULL);g.fill();   /* top sheen */
+  /* nose cone (front = LEFT, the direction of travel) */
+  g.fillStyle='#20305e';g.beginPath();g.arc(bx-12,by,4.6,0,FULL);g.fill();
+  g.fillStyle='#d0342a';g.beginPath();g.arc(bx-12,by,3.6,0,FULL);g.fill();
+  /* tail fin (rear = right) */
+  g.fillStyle='#20305e';g.fillRect(bx+9,by-9,5,2);
+  g.fillStyle='#d0342a';g.fillRect(bx+10,by-7,3,3);
+  /* gondola + little cockpit windows */
+  g.fillStyle='#20305e';g.fillRect(bx-6,by+7,12,5);
+  g.fillStyle='#2b3f7e';g.fillRect(bx-5,by+8,10,4);
+  g.fillStyle='#ffd23e';g.fillRect(bx-3,by+9,2,2);g.fillRect(bx+1,by+9,2,2);
+  /* --- banner (trails behind, to the RIGHT) --- */
+  g.fillStyle='#20305e';g.fillRect(bxr-1,3,bannerW+2,bannerH+2);                    /* dark border */
+  g.fillStyle='#f7f9ff';g.fillRect(bxr,4,bannerW,bannerH);                          /* field   */
+  g.fillStyle='#ffd23e';g.fillRect(bxr,4,bannerW,1);g.fillRect(bxr,4+bannerH-1,bannerW,1);/* gold trim */
+  g.font=FONT;g.fillStyle='#d0342a';g.textAlign='center';g.textBaseline='middle';
+  g.fillText(L1,bxr+bannerW/2,4+8);
+  g.fillText(L2,bxr+bannerW/2,4+18);
+  g.fillStyle='#8a5a00';g.fillRect(bxr-1,7,2,2);g.fillRect(bxr-1,bannerH+1,2,2);   /* tie knots */
+ }catch(e){blimpCv=null;}   /* if the sprite can't be built, simply skip the blimp */
+}
+function launchBlimp(){
+ makeBlimp();
+ if(!blimpCv)return;
+ BLIMP.active=true;
+ BLIMP.x=VW;                  /* start just off the right edge */
+ BLIMP.phase=0;
+}
+function stepBlimp(dt){
+ if(!BLIMP.active||!blimpCv)return;
+ BLIMP.phase+=dt*3;
+ BLIMP.x-=BLIMP_SPEED*dt;
+ if(BLIMP.x+blimpW*BLIMP_SCALE<0)BLIMP.active=false;   /* fully gone off the left side */
+}
+function drawBlimp(){
+ if(!BLIMP.active||!blimpCv)return;
+ const y=Math.round(8+Math.sin(BLIMP.phase)*1.2*BLIMP_SCALE);   /* gentle bob, stays above the horizon (HZ=54) */
+ ctx.drawImage(blimpCv,Math.round(BLIMP.x),y,Math.round(blimpW*BLIMP_SCALE),Math.round(blimpH*BLIMP_SCALE));
+}
+/* =====================================================================
+   three.js scenic backdrop
+   Deep-blue sky, soft sun, smooth mountain ranges (hazy far range +
+   snow-capped near range) and puffy clouds, rendered on the full-res
+   #bg3d canvas BEHIND the 192x144 pixel canvas — so the background is
+   anti-aliased and smooth instead of stretched 8-bit blocks.
+   The banded sky / forest ridges above are kept as an offline
+   fallback: if the THREE CDN can't load or WebGL is missing, the game
+   still runs with the original 8-bit background.
+   ===================================================================== */
+let threeOK=false,renderer3=null,scene3=null,cam3=null;
+let farLayer=null,nearLayer=null,cloudSprites3=[];
+const CAM_FOV=50,FAR_S=0.055,NEAR_S=0.11;  /* parallax: world units per virtual px of curve offset */
+function horizonNdc(){return (0.5-HZ/VH)*2;}
+function camPitch(){return Math.atan(horizonNdc()*Math.tan(CAM_FOV*Math.PI/360));}
+function halfViewW(d){return d*Math.tan(CAM_FOV*Math.PI/360)*(VW/VH);}
+function fracToWorldY(frac,d){  /* screen row fraction (from top) -> world height at depth d */
+  return d*Math.tan(Math.atan((0.5-frac)*2*Math.tan(CAM_FOV*Math.PI/360))-camPitch());
+}
+function buildSky3(){
+  const c=document.createElement('canvas');c.width=2;c.height=256;
+  const g=c.getContext('2d');
+  const gr=g.createLinearGradient(0,0,0,256);
+  gr.addColorStop(0,'#081d54');gr.addColorStop(0.45,'#16459d');   /* deep royal blue zenith */
+  gr.addColorStop(0.78,'#4f89d2');gr.addColorStop(1,'#aacdf0');    /* pale haze at the horizon */
+  g.fillStyle=gr;g.fillRect(0,0,2,256);
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(1600,1000),
+    new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c)}));
+  m.position.z=-700;
+  scene3.add(m);
+}
+function makeMountain3(width,hF,z,botHex,topHex,snowHex,snowTh,snowBl=0.92){
+  const N=Math.max(80,width|0);   /* 1 unit/segment -> smooth crest gradients */
+  const shape=new THREE.Shape();shape.moveTo(0,-80);
+  let maxY=0;
+  for(let i=0;i<=N;i++){const x=width*i/N,y=hF(x);if(y>maxY)maxY=y;shape.lineTo(x,y);}
+  shape.lineTo(width,-80);
+  const geo=new THREE.ShapeGeometry(shape);
+  /* per-vertex gradient: dark base -> lighter crest -> (near range) snow caps */
+  const pos=geo.attributes.position;
+  const col=new Float32Array(pos.count*3);
+  const cB=new THREE.Color(botHex),cT=new THREE.Color(topHex),
+        cS=new THREE.Color(snowHex||'#ffffff'),tmp=new THREE.Color();
+  for(let i=0;i<pos.count;i++){
+    const t=Math.max(0,Math.min(1,pos.getY(i)/maxY));
+    tmp.copy(cB).lerp(cT,t*t*(3-2*t));
+    if(snowTh&&t>snowTh)tmp.lerp(cS,((t-snowTh)/(1-snowTh))*snowBl);
+    col[i*3]=tmp.r;col[i*3+1]=tmp.g;col[i*3+2]=tmp.b;
+  }
+  geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+  const mat=new THREE.MeshBasicMaterial({vertexColors:true});
+  /* three seamless copies so curve-parallax can wrap around without a seam */
+  const group=new THREE.Group();
+  for(const dx of [0,-width,width]){const m=new THREE.Mesh(geo,mat);m.position.set(dx,0,z);group.add(m);}
+  scene3.add(group);
+  return {group,width};
+}
+function buildMountains3(){
+  const Wf=480,Wn=320;
+  /* Integer sine harmonics -> the profile tiles perfectly (seamless wrap).
+     Ranges shaped after a photo of a long desert highway with a distant
+     mountain massif: one broad rounded crest wearing a wide snow band,
+     gentle undulating shoulders either side, and a faint paler ridge
+     sitting behind the valleys for depth.
+     The near dominant term is a low-frequency SINE, so its crest sits OFF
+     the tile seam (screen center on a straight road): the seam is a calm
+     gap where the taller far ridge shows through — no bright crest-patch
+     mid-screen; small phased harmonics give the slightly bumpy ridgeline.
+     Exponents stay LOW (near 1.0): |sin|^p / |cos|^p hold their full
+     amplitude for any p, so peak heights are set by the coefficients only —
+     low exponents just flatten crests and broaden the mountain bases.
+     Colors: deep blue body with a soft snow band (threshold 0.72,
+     gentle blend) on the near range; a darker hazy blue far ridge.
+     (History: old 48:22:11 spike phases drew thin "beams" at the horizon.) */
+  const hf=x=>26*Math.pow(Math.abs(Math.cos(Math.PI*2*2*x/Wf)),1.0)
+             +9*Math.pow(Math.abs(Math.sin(Math.PI*2*5*x/Wf+1.2)),1.1)
+             +4*Math.pow(Math.abs(Math.sin(Math.PI*2*9*x/Wf+4.4)),1.0);
+  const hn=x=>9*Math.pow(Math.abs(Math.sin(Math.PI*2*2*x/Wn)),1.15)
+             +4*Math.pow(Math.abs(Math.cos(Math.PI*2*5*x/Wn+0.4)),1.2)
+             +3*Math.pow(Math.abs(Math.sin(Math.PI*2*11*x/Wn+2.2)),1.0);
+  farLayer =makeMountain3(Wf,hf,-340,'#3d5f96','#7fa5cf',null,0);    /* darker hazy ridge   */
+  nearLayer=makeMountain3(Wn,hn,-210,'#2f5390','#4f78b4','#f6fafd',0.72,0.6); /* blue massif, soft snow */
+}
+function buildClouds3(){
+  const c=document.createElement('canvas');c.width=128;c.height=56;
+  const g=c.getContext('2d');
+  const puff=(x,y,r)=>{
+    const gr=g.createRadialGradient(x,y,r*0.12,x,y,r);
+    gr.addColorStop(0,'rgba(255,255,255,0.98)');
+    gr.addColorStop(0.55,'rgba(255,255,255,0.85)');
+    gr.addColorStop(1,'rgba(255,255,255,0)');
+    g.fillStyle=gr;g.beginPath();g.arc(x,y,r,0,Math.PI*2);g.fill();
+  };
+  puff(26,34,20);puff(52,25,24);puff(80,30,22);puff(104,37,15);
+  const tex=new THREE.CanvasTexture(c);
+  for(const cl of clouds){
+    const d=cl.d||320;
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,opacity:0.92,depthWrite:false}));
+    const sx=halfViewW(d)/(VW/2);                       /* world units per virtual px at that depth */
+    sp.scale.set(20*cl.s*sx,20*cl.s*sx*56/128,1);
+    sp.position.set((cl.x-VW/2)*sx,fracToWorldY(cl.y/VH,d),-d);
+    scene3.add(sp);
+    cloudSprites3.push({sp,cl,sx});
+  }
+}
+function buildSun3(){
+  const c=document.createElement('canvas');c.width=c.height=64;
+  const g=c.getContext('2d');
+  const gr=g.createRadialGradient(32,32,0,32,32,32);
+  gr.addColorStop(0,'rgba(255,255,255,1)');
+  gr.addColorStop(0.3,'rgba(255,243,199,0.95)');
+  gr.addColorStop(0.6,'rgba(255,213,110,0.5)');
+  gr.addColorStop(1,'rgba(255,200,90,0)');
+  g.fillStyle=gr;g.fillRect(0,0,64,64);
+  const d=520,sx=halfViewW(d)/(VW/2);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthWrite:false}));
+  sp.scale.set(17*sx,17*sx,1);
+  sp.position.set((VW-30-VW/2)*sx,fracToWorldY(16/VH,d),-d);   /* where the pixel sun used to be */
+  scene3.add(sp);
+}
+function sizeThree(){
+  if(!renderer3)return;
+  const st=document.getElementById('stage');
+  const w=st.clientWidth||window.innerWidth,h=st.clientHeight||window.innerHeight;
+  renderer3.setSize(w,h,false);
+  cam3.aspect=w/h;cam3.updateProjectionMatrix();
+}
+function killBackdrop(){   /* WebGL died (context lost etc.): drop the 3D backdrop, keep the 8-bit one */
+ if(!threeOK)return;
+ threeOK=false;
+ if(renderer3){try{if(renderer3.dispose)renderer3.dispose();}catch(e){}}
+ renderer3=null;scene3=null;cam3=null;farLayer=null;nearLayer=null;cloudSprites3.length=0;
+ if(!skyCv){makeSky();makeClouds();makeRidges();}   /* ensure the 8-bit assets exist */
+}
+function updateThree(){
+ try{
+  if(farLayer)farLayer.group.position.x=-((((bgFar*FAR_S)%farLayer.width)+farLayer.width)%farLayer.width);
+  if(nearLayer)nearLayer.group.position.x=-((((bgNear*NEAR_S)%nearLayer.width)+nearLayer.width)%nearLayer.width);
+  for(const cs of cloudSprites3)cs.sp.position.x=(cs.cl.x-VW/2)*cs.sx;
+  renderer3.render(scene3,cam3);
+ }catch(e){killBackdrop();}
+}
+function initThree(){
+  if(typeof THREE==='undefined')return false;
+  try{
+    renderer3=new THREE.WebGLRenderer({canvas:document.getElementById('bg3d'),antialias:true});
+    renderer3.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    renderer3.setClearColor(0x0a2565,1);
+    scene3=new THREE.Scene();
+    cam3=new THREE.PerspectiveCamera(CAM_FOV,VW/VH,1,2000);
+    cam3.rotation.x=-camPitch();    /* pitch down so the 3D horizon lands exactly on HZ */
+    buildSky3();buildMountains3();buildClouds3();buildSun3();
+    sizeThree();
+    window.addEventListener('resize',sizeThree);
+    return true;
+  }catch(e){return false;}
+}
+function loadThree(){
+  if(typeof THREE!=='undefined'){threeOK=initThree();return;}
+  try{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+    s.onload=function(){threeOK=initThree();initCarGL();buildGantry();buildBillboards();loadFbxCar();};
+    s.onerror=function(){};   /* offline: keep the 8-bit backdrop */
+    const head=document.head||document.documentElement;
+    if(head)head.appendChild(s);
+  }catch(e){}
+}
+/* =====================================================================
+   three.js low-poly F1 cars — rendered as true 3D "sprites"
+   One small offscreen WebGL context renders a low-poly open-wheel car
+   from behind. The car yaws/rolls with steering and the road curve, so
+   it reads as 3D on the pseudo-3D road (it turns and shows its side in
+   a corner, like a real car). The blit is projection-anchored: the tyre
+   contact line lands exactly on the road row the car stands on and the
+   width matches its on-road scale — no floating, no wrong proportions.
+   If THREE/WebGL is unavailable the original 8-bit pixel sprites are
+   used instead.
+   ===================================================================== */
+let carGL=null,carScene=null,carCam=null,carGroup=null,carBodyMats=null,carLastCol=null;
+let carFixedMats=null;                    /* tyre/rim materials — fixed black/grey, never recoloured */
+let carIsFbx=false;                       /* true when the f1.fbx model is in the car scene */
+let _heroTex=undefined;                   /* the livery diffuse texture, stashed while AI cars are painted over it */
+let pYaw=0;   /* smoothed yaw of the player car (rad) */
+const CAR_CW=768,CAR_CH=352;              /* car sprite render canvas — 2x the old 384x176 so the livery
+                                              texture keeps detail at road scale (tyre line ~322px down) */
+const PLAYER_COL='#e84040';              /* player car body colour: solid RED arcade body */
+const carLivery='#e84040';               /* hero-car body colour when the model's texture is absent (RED, matches PLAYER_COL) */
+/* blit anchors in car-local space: the two width points + the tyre contact line.
+   Defaults = the procedural low-poly car; installF1Model() overwrites for f1.fbx. */
+let carAnchor={L:[-1.02,0,-0.7],R:[1.02,0,-0.7],
+  contacts:[[0.86,0,-1.75],[-0.86,0,-1.75],[0.89,0,1.10],[-0.89,0,1.10]]};
+function buildF1Car(){
+ carBodyMats=[];
+ const g=new THREE.Group();
+ const bodyMat=()=>{const m=new THREE.MeshLambertMaterial({color:0xffd400});carBodyMats.push(m);return m;};
+ const body=bodyMat(),wing=bodyMat(),
+       dark =new THREE.MeshLambertMaterial({color:0x181b24}),
+       glass=new THREE.MeshLambertMaterial({color:0x2b3345}),
+       tyre =new THREE.MeshLambertMaterial({color:0x101218});
+ const B=(w,h,d,x,y,z,mat)=>{
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+  m.position.set(x,y,z);g.add(m);return m;};
+ const T=(r,t,x,z)=>{   /* tyre: cylinder, axle along X */
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,t,14),tyre);
+  m.rotation.z=Math.PI/2;m.position.set(x,r,z);g.add(m);return m;};
+ /* car front is at -Z so the camera (at +Z) sees the REAR, like on track */
+ B(0.46,0.34,3.4,  0,0.36,-0.50, body);        /* main tub            */
+ B(0.30,0.24,1.0,  0,0.34,-2.35, body);        /* nose cone           */
+ B(0.16,0.14,0.45, 0,0.31,-3.05, body);        /* nose tip            */
+ B(1.92,0.07,0.55, 0,0.10,-2.95, wing);        /* front wing          */
+ B(0.05,0.30,0.55, 0.96,0.22,-2.95,wing);      /* front wing endplates*/
+ B(0.05,0.30,0.55,-0.96,0.22,-2.95,wing);
+ B(0.38,0.30,1.05, 0.42,0.33,-0.35, body);     /* sidepods            */
+ B(0.38,0.30,1.05,-0.42,0.33,-0.35, body);
+ B(0.38,0.16,0.62, 0,0.60,-0.55, glass);       /* cockpit             */
+ B(0.62,0.05,0.06, 0,0.76,-0.28, dark);        /* halo: top bar       */
+ B(0.58,0.05,0.06, 0,0.70,-0.84, dark);        /* halo: front hoop    */
+ B(0.06,0.06,0.58, 0,0.73,-0.56, dark);        /* halo: centre bar    */
+ B(0.24,0.20,0.35, 0,0.74, 0.12, dark);        /* airbox              */
+ B(0.34,0.28,1.30, 0,0.56, 0.35, body);        /* engine cover        */
+ B(0.04,0.30,0.75, 0,0.78, 0.95, dark);        /* shark fin           */
+ B(0.72,0.16,0.22, 0,0.30, 1.28, dark);        /* diffuser            */
+ B(1.58,0.06,0.42, 0,0.66, 1.55, wing);        /* rear wing           */
+ B(0.05,0.36,0.55, 0.81,0.64, 1.55, wing);     /* rear wing endplates */
+ B(0.05,0.36,0.55,-0.81,0.64, 1.55, wing);
+ B(0.09,0.16,0.10, 0.34,0.50, 1.42, dark);     /* rear wing supports  */
+ B(0.09,0.16,0.10,-0.34,0.50, 1.42, dark);
+ T(0.34,0.26, 0.86,-1.75);                     /* front tyres         */
+ T(0.34,0.26,-0.86,-1.75);
+ T(0.36,0.30, 0.89, 1.10);                     /* rear tyres          */
+ T(0.36,0.30,-0.89, 1.10);
+ return g;
+}
+function initCarGL(){
+ if(carGL)return true;
+ if(typeof THREE==='undefined')return false;
+ try{
+  const c=document.createElement('canvas');c.width=CAR_CW;c.height=CAR_CH;
+  carGL=new THREE.WebGLRenderer({canvas:c,alpha:true,antialias:true,preserveDrawingBuffer:true});
+  carGL.setClearColor(0x000000,0);
+  carScene=new THREE.Scene();
+  carCam=new THREE.PerspectiveCamera(32,CAR_CW/CAR_CH,0.1,100);
+  carCam.position.set(0,1.0,5.9);
+  carCam.lookAt(0,0.52,-0.7);       /* low rear view: tyres near the canvas bottom */
+  carScene.add(new THREE.HemisphereLight(0xd8e9ff,0x232833,0.95));
+  const key=new THREE.DirectionalLight(0xffffff,0.85);key.position.set(1.8,3.4,4.5);carScene.add(key);
+  const rim=new THREE.DirectionalLight(0xa8c4ff,0.30);rim.position.set(-2.4,1.4,-4.0);carScene.add(rim);
+  carGroup=buildF1Car();
+  carScene.add(carGroup);
+  paintCar(PLAYER_COL,0,0);   /* warm-up: force shader compile + first render HERE at init —
+                                a failure disables the 3D car now (sprite fallback) instead
+                                of throwing every frame later */
+  return !!carGL;
+ }catch(e){carGL=null;carScene=null;carCam=null;carGroup=null;return false;}
+}
+function killCarGL(){   /* permanent fallback to the 8-bit pixel sprites */
+ if(!carGL)return;
+ try{if(carGL.dispose)carGL.dispose();}catch(e){}
+ carGL=null;carScene=null;carCam=null;carGroup=null;carBodyMats=null;carLastCol=null;
+ if(carFixedMats){for(const m of carFixedMats){if(m&&m.dispose)m.dispose();}carFixedMats=null;}
+ _heroTex=undefined;
+ carIsFbx=false;
+ carAnchor={L:[-1.02,0,-0.7],R:[1.02,0,-0.7],contacts:[[0.86,0,-1.75],[-0.86,0,-1.75],[0.89,0,1.10],[-0.89,0,1.10]]};
+ gantryScene=null;gantryCam=null;gantryLightMats=null;   /* gate reuses the car renderer — dead with it */
+}
+/* =====================================================================
+   3D START gantry — twin pillars, checkered "START" banner, a
+   traffic-light panel. Rendered with three.js into the SAME offscreen
+   WebGL canvas the cars use (one renderer, several scenes), then blitted
+   projection-anchored onto the pseudo-3D road exactly like the cars:
+   its width scales with the road width on its row and its pillar feet
+   land on the road row, so it stands on the track, recedes with the
+   curve, and whooshes past the player like a real racing-game gate.
+   The gate stands ON the checkered start line (pos 500, the centre of the
+   single checkered band at 400-600), so the start order reads:
+   hero -> rival grid -> checkered line + gantry (cross the line as you
+   pass under the gate, exactly like the arcade).
+   An 8-bit pixel fallback draws it if WebGL is unavailable.
+   ===================================================================== */
+let gantryScene=null,gantryCam=null,gantryLightMats=null;
+let GAN_TOP_RATIO=0.42;            /* gate on-screen height / width. Default matches the
+                                      8-bit fallback (ph=0.42*w); buildGantry overwrites it
+                                      with the 3D gate's real projected ratio. Used to pop the
+                                      gate out only when it FULLY covers the screen and to
+                                      crest-clip by its TOP, not its base (it's taller than the
+                                      camera is high, so its base row legitimately drops off the
+                                      bottom of the screen while the banner is still overhead) */
+let _gv=null;
+const GANTRY_POS=500;          /* track position of the gate: its pillar base sits on the CENTRE of the
+                                  checkered start band (pos 400-600) — i.e. ON the start line, like the arcade.
+                                  (Was 400 = the band's near lip, so the gate looked offset in front of the line.) */
+const GANTRY_WORLD=2082;       /* world width (track units): pillars at ±7.4 car units (1 car unit ≈ 140.7) */
+const GAN_CW=512,GAN_CH=512;   /* gantry sprite canvas (square) */
+const GAN_PX=7.4;              /* pillar centre x in car-local units (road half-width = 7.1) */
+function gantryProj(x,y,z){
+ if(!_gv)_gv=new THREE.Vector3();
+ _gv.set(x,y,z).project(gantryCam);
+ return [(_gv.x*0.5+0.5)*GAN_CW,(0.5-_gv.y*0.5)*GAN_CH];
+}
+function makeBannerTex(){
+ /* 16-bit banner: checkered end blocks + a bold red band with a big, thick,
+    high-contrast white START. Power-of-two (1024x128) so mipmaps are
+    generated — that is what keeps the lettering smooth (not shimmering,
+    pixelated soup) when the gate is far away and minified on screen. */
+ const c=document.createElement('canvas');c.width=1024;c.height=128;
+ const g=c.getContext('2d');
+ g.fillStyle='#14141c';g.fillRect(0,0,1024,128);
+ const cell=32;
+ for(const ex of[0,1024-128]){               /* 2x4 checker squares on each end */
+  for(let y=0;y<128;y+=cell)for(let x=ex;x<ex+128;x+=cell){
+   g.fillStyle=((((x-ex)/cell)+(y/cell))&1)?'#f8f8f8':'#14141c';
+   g.fillRect(x,y,cell,cell);
+  }
+ }
+ g.fillStyle='#d92818';g.fillRect(128,0,768,128);   /* red band across the middle */
+ g.fillStyle='#ffffff';
+ g.font='900 108px "Arial Black","Arial",sans-serif';
+ g.textAlign='center';g.textBaseline='middle';
+ g.lineWidth=18;g.strokeStyle='#5a0b04';
+ g.strokeText('START',512,64);
+ g.fillText('START',512,64);
+ const t=new THREE.CanvasTexture(c);
+ t.encoding=THREE.sRGBEncoding;
+ return t;
+}
+function buildGantry(){
+ if(gantryScene)return true;
+ if(!carGL||typeof THREE==='undefined')return false;   /* renderer comes from the car pipeline */
+ try{
+  gantryScene=new THREE.Scene();
+  gantryCam=new THREE.PerspectiveCamera(45,GAN_CW/GAN_CH,0.1,200);
+  gantryCam.position.set(0,3.6,24);
+  gantryCam.lookAt(0,3.0,0);
+  gantryScene.add(new THREE.HemisphereLight(0xd8e9ff,0x30405a,1.0));
+  const key=new THREE.DirectionalLight(0xffffff,0.9);key.position.set(1.8,3.4,4.5);gantryScene.add(key);
+  const rim=new THREE.DirectionalLight(0xa8c4ff,0.35);rim.position.set(-2.4,1.2,-4.0);gantryScene.add(rim);
+  const g=new THREE.Group();
+  /* 16-bit materials: glossy Phong speculars give smooth shaded steel
+     instead of flat 8-bit blocks */
+  const steel=new THREE.MeshPhongMaterial({color:0x3f6ad1,specular:0x99bbff,shininess:32});
+  const navy=new THREE.MeshPhongMaterial({color:0x25304e,specular:0x5566aa,shininess:24});
+  const red=new THREE.MeshPhongMaterial({color:0xe03428,specular:0xff9988,shininess:28});
+  const B=(w,h,d,x,y,z,mat)=>{
+   const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+   m.position.set(x,y,z);g.add(m);return m;};
+  /* pillars: wide foot + shaft + taper — a stepped silhouette, not one cube */
+  B(1.1,0.5,1.1, GAN_PX,0.25,0, navy);
+  B(1.1,0.5,1.1,-GAN_PX,0.25,0, navy);
+  B(0.7,2.4,0.7, GAN_PX,1.7,0, steel);
+  B(0.7,2.4,0.7,-GAN_PX,1.7,0, steel);
+  B(0.5,3.2,0.5, GAN_PX,4.4,0, steel);
+  B(0.5,3.2,0.5,-GAN_PX,4.4,0, steel);
+  /* the FULL blue beam across the road — completely visible UNDER the
+     banner (the old dark beam was hidden behind it, so the bar looked
+     cut off) — plus a lower cross-brace for the truss look */
+  B(15.4,0.7,0.5, 0,6.0,0, steel);
+  B(14.6,0.35,0.35, 0,4.8,0, navy);
+  /* banner RIDES ON TOP of the beam: checkered ends, red band, big START */
+  const banner=new THREE.Mesh(new THREE.PlaneGeometry(13.6,1.9),
+   new THREE.MeshBasicMaterial({map:makeBannerTex()}));
+  banner.position.set(0,7.3,0.42);g.add(banner);
+  /* red end-caps flanking the banner, like the arcade gate */
+  B(0.9,1.9,0.5, 6.8,7.3,0.2, red);
+  B(0.9,1.9,0.5,-6.8,7.3,0.2, red);
+  /* traffic-light panel on the left pillar, under the beam */
+  B(1.5,1.9,0.25, -GAN_PX,4.0,0.42, navy);
+  gantryLightMats=[];
+  for(let i=0;i<3;i++){
+   const m=new THREE.MeshBasicMaterial({color:0x551111});
+   gantryLightMats.push(m);
+   const c=new THREE.Mesh(new THREE.CircleGeometry(0.26,20),m);
+   c.position.set(-GAN_PX+(i-1)*0.45,4.0,0.58);g.add(c);
+  }
+  gantryScene.add(g);
+  /* store the gate's real on-screen height/width so the crest clip can test its
+     TOP (it's taller than the camera is high — its base row drops off the bottom
+     of the screen while the banner is still fully visible overhead) */
+  {
+   const span=Math.abs(gantryProj(GAN_PX,0,0)[0]-gantryProj(-GAN_PX,0,0)[0]);
+   const hpx=Math.abs(gantryProj(0,0,0)[1]-gantryProj(0,8.25,0)[1]);
+   GAN_TOP_RATIO=Math.max(0.05,hpx/Math.max(4,span));
+  }
+  renderGantry();                                        /* warm-up: shader compile + first render at init */
+  return true;
+ }catch(e){gantryScene=null;gantryCam=null;gantryLightMats=null;return false;}
+}
+function renderGantry(){
+ if(!carGL||!gantryCam)return false;
+ try{
+  /* lights like a real gate: red while the countdown runs, green once racing */
+  const on=(state==='count')?'#ff3b30':((state==='race'||state==='finish')?'#2ecc71':'#551111');
+  for(const m of gantryLightMats)m.color.set(on);
+  carGL.render(gantryScene,gantryCam);
+  return true;
+ }catch(e){return false;}
+}
+function blitGantry(cx,cyRoad,w){
+ if(!renderGantry())return false;
+ try{
+  const L=gantryProj(-GAN_PX,0,0),R=gantryProj(GAN_PX,0,0);
+  let bot=-1e9;
+  for(const gx of[-GAN_PX,GAN_PX]){const p=gantryProj(gx,0,0);if(p[1]>bot)bot=p[1];}
+  const k=w/Math.max(4,Math.abs(R[0]-L[0]));
+  ctx.save();
+  ctx.imageSmoothingEnabled=true;
+  ctx.drawImage(carGL.domElement,0,0,GAN_CW,GAN_CH,
+   cx-(L[0]+R[0])*k/2, cyRoad-bot*k, GAN_CW*k, GAN_CH*k);
+  ctx.restore();
+  return true;
+ }catch(e){return false;}
+}
+function drawGantry8bit(cx,cy,w){
+ /* pixel gate matching the 3D one: full blue beam under a checkered red
+    START banner, stepped blue pillars, red end-caps, three gate lights */
+ const ph=Math.max(8,w*0.42);                 /* gate height ≈ 0.42 of its width */
+ const lw=cx-w/2,rw=cx+w/2,bw=Math.round(rw-lw);
+ const pw=Math.max(1,Math.round(w*0.05));
+ const beamH=Math.max(2,Math.round(ph*0.12));
+ const banH=Math.max(2,Math.round(ph*0.17));
+ /* pillar feet (darker) then the blue shafts */
+ ctx.fillStyle='#25304e';
+ ctx.fillRect(lw,cy-ph*0.15,Math.max(2,Math.round(w*0.075)),Math.round(ph*0.15));
+ ctx.fillRect(rw-Math.max(2,Math.round(w*0.075)),cy-ph*0.15,Math.max(2,Math.round(w*0.075)),Math.round(ph*0.15));
+ ctx.fillStyle='#3f6ad1';
+ ctx.fillRect(lw,cy-ph+banH+beamH,pw,ph-beamH-banH);
+ ctx.fillRect(rw-pw,cy-ph+banH+beamH,pw,ph-beamH-banH);
+ /* the FULL blue beam, visible under the banner */
+ ctx.fillRect(lw,cy-ph+banH,bw,beamH);
+ /* checkered banner with the red START band */
+ const cell=Math.max(2,bw/16);
+ for(let x=lw,k=0;x<rw;x+=cell,k++){
+  ctx.fillStyle=(k&1)?'#f8f8f8':'#14141c';
+  ctx.fillRect(x,cy-ph,Math.min(cell,rw-x),banH);
+ }
+ ctx.fillStyle='#d92818';
+ ctx.fillRect(Math.round(lw+bw*0.16),cy-ph,Math.round(bw*0.68),banH);
+ if(banH>=4){ctx.fillStyle='#ffffff';ctx.fillRect(Math.round(lw+bw*0.38),cy-ph+1,Math.round(bw*0.24),banH-2);}
+ /* red end-caps */
+ ctx.fillStyle='#e03428';
+ ctx.fillRect(lw,cy-ph,Math.max(2,Math.round(w*0.06)),banH);
+ ctx.fillRect(rw-Math.max(2,Math.round(w*0.06)),cy-ph,Math.max(2,Math.round(w*0.06)),banH);
+ /* gate lights */
+ ctx.fillStyle=(state==='count')?'#ff3b30':((state==='race'||state==='finish')?'#2ecc71':'#551111');
+ const lh=Math.max(1,Math.round(banH*0.5));
+ for(let i=0;i<3;i++)ctx.fillRect(Math.round(lw+bw*(0.42+i*0.08)),cy-ph*0.55,lh,lh);
+}
+function drawGantry(d,s){
+ const f=(d%SEG_LEN)/SEG_LEN;
+ /* same exact 1/z projection as the cars — no lerp wobble on the near rows */
+ const sc=CAM_D/Math.max(d,20);
+ const cx=VW/2+sc*(s.ax+f*s.adx-playerX*ROAD_HALF)*VW/2;
+ const cy=HZ-sc*(s.p1[1]+(s.p2[1]-s.p1[1])*f-s.camY)*FOCAL_V;
+ const cw=sc*ROAD_HALF*VW/2;
+ const w=cw*GANTRY_WORLD/ROAD_HALF;
+ if(w<8)return;                              /* still far away — not resolved yet */
+ /* Pop out ONLY when the gate FULLY covers the screen: base row below the bottom
+    edge AND top above the top edge (which at that size also spans the full
+    width). Then dropping it is an invisible swap = the exact instant of passing
+    under it. No early hard pop — the gate glides in and grows smoothly right up
+    to this point, then whooshes overhead. (Computed from the real height ratio,
+    so it stays correct even if the gate's proportions change.) */
+ if(cy>VH&&cy-GAN_TOP_RATIO*w<0)return;
+ /* Crest-clip by the gate's TOP, not its base: the gate is TALLER than the
+    camera is high, so as it closes in its road-row anchor (cy) legitimately falls
+    off the bottom of the screen while the beam + START banner are still fully
+    visible overhead. Hide it only when even its top is behind a crest — on the
+    flat start straight this never triggers, so the approach is flicker-free. */
+ if(cy-GAN_TOP_RATIO*w>=s.clip)return;
+ if(blitGantry(cx,cy,w))return;
+ drawGantry8bit(cx,cy,w);
+}
+/* =====================================================================
+   ROADSIDE BILLBOARDS — the 20 advertising panels that line the track
+   the way a real 1980s GP circuit does (the arcade original had them
+   too): a beer, an engine oil, a tyre maker, a cola, a video-game
+   company and a cigarette brand, repeated around the loop.
+   Each ad face is vector art on a small 2D canvas (logo + slogan).
+   three.js then composites that face onto a dark frame and lit steel
+   legs in a 3D scene and renders the billboard sprite into an
+   offscreen buffer — the same "render 3D, blit anchored" pipeline the
+   cars and the START gantry use. On the road each sign is anchored to
+   its exact segment row with the same 1/z projection as everything
+   else, so it rides the curves, sits on the grass just past the
+   red/white kerb, crests the hills, and zooms past the player with a
+   clean scale-up until it whooshes out of view (arcade pop-out).
+   If three.js / WebGL is unavailable a plain 2D-composited panel with
+   the same layout stands in, so the billboards always exist.
+   ===================================================================== */
+const BB_RES=2;                          /* internal supersampling: the art is drawn at 2× and
+                                           downsampled, so the lettering stays crisp and the
+                                           brand reads clearly when the sign is small at mid-range */
+const BB_DW=512,BB_DH=448;               /* billboard sprite design size (all art coords live here) */
+const BB_CW=BB_DW*BB_RES,BB_CH=BB_DH*BB_RES;   /* billboard sprite canvas (device px, supersampled) */
+const BB_FACE={x:24,y:8,w:464,h:296};   /* the ad-face rect in design space */
+const BB_WORLD=1500;                    /* face width in track units (ROAD_HALF=1000).
+                                           BIG on purpose: w = 190.68*BB_WORLD/d, so at
+                                           d=5000 the face is ~57px and the brand lettering
+                                           ~11px — readable well back down the track, not just
+                                           in the last few frames before it whooshes past.
+                                           Still clears the kerb (see BB_OFF). */
+const BB_OFF=1.95;                      /* face centre x: 1.95 half-road-widths out = 1950;
+                                           the 750-wide face's inner edge sits at 1200, clear of
+                                           the road edge (1000) and the 1.3x red/white kerb */
+const BB_ART={};                        /* brand -> [variantA, variantB] art-draw fns */
+let bbArtCache=null,bbSprites=null,bbMode=0;   /* 0=none, 1=2D composite, 2=three.js */
+let bbGL=null,bbSrcCv=null;
+/* twenty signs cycling the six sponsors, sides alternating. They run from
+   pos 12000 to 154500 — deliberately clear of the start line (0) and of the
+   grid straight (the last 72 segments), so the finish sprint stays clean. */
+const BB_LIST=(function(){
+ const cycle=['beer','oil','tire','cola','game','tob'];
+ const out=[];
+ for(let i=0;i<20;i++)out.push({p:12000+i*7500,s:i%2?-1:1,b:cycle[i%6],v:(i>>1)%2,cv:null});
+ return out;})();
+/* ---------- shared 2D art helpers (464x296 faces) ---------- */
+function bbText(g,txt,cx,y,size,col,stroke,sw,font){
+ g.font='900 '+size+'px '+(font||'"Arial Black","Arial",sans-serif');
+ g.textAlign='center';g.textBaseline='middle';
+ if(stroke){g.lineWidth=sw||Math.max(2,Math.round(size/8));g.strokeStyle=stroke;g.strokeText(txt,cx,y);}
+ g.fillStyle=col;g.fillText(txt,cx,y);
+}
+function bbCrown(g,x,y,w,h,col){
+ g.fillStyle=col;g.beginPath();
+ g.moveTo(x-w/2,y+h);g.lineTo(x-w/2,y);g.lineTo(x-w/4,y+h*0.5);g.lineTo(x,y);
+ g.lineTo(x+w/4,y+h*0.5);g.lineTo(x+w/2,y);g.lineTo(x+w/2,y+h);g.closePath();g.fill();
+ for(const dx of[-w/2,0,w/2]){g.beginPath();g.arc(x+dx,y-6,5,0,7);g.fill();}
+}
+function bbFlame(g,x,y,s,c1,c2){
+ g.fillStyle=c1;g.beginPath();
+ g.moveTo(x,y-34*s);
+ g.bezierCurveTo(x+26*s,y-16*s,x+22*s,y+14*s,x,y+26*s);
+ g.bezierCurveTo(x-22*s,y+14*s,x-26*s,y-16*s,x,y-34*s);
+ g.fill();
+ g.fillStyle=c2;g.beginPath();
+ g.moveTo(x,y-14*s);
+ g.bezierCurveTo(x+12*s,y-4*s,x+10*s,y+10*s,x,y+18*s);
+ g.bezierCurveTo(x-10*s,y+10*s,x-12*s,y-4*s,x,y-14*s);
+ g.fill();
+}
+function bbBolt(g,x,y,s,col,stroke){
+ const p=[[0.58,0],[0,0.62],[0.34,0.62],[0.10,1],[0.9,0.34],[0.50,0.34],[0.78,0]];
+ g.beginPath();
+ p.forEach((q,i)=>{const X=x+q[0]*90*s,Y=y+q[1]*130*s;i?g.lineTo(X,Y):g.moveTo(X,Y);});
+ g.closePath();
+ if(stroke){g.lineWidth=8*s;g.lineJoin='round';g.strokeStyle=stroke;g.stroke();}
+ g.fillStyle=col;g.fill();
+}
+function bbTire(g,cx,cy,r,out,mid,hub){
+ g.fillStyle=out;g.beginPath();g.arc(cx,cy,r,0,7);g.fill();
+ g.fillStyle=out;
+ for(let i=0;i<16;i++){
+  g.save();g.translate(cx,cy);g.rotate(i/16*Math.PI*2);
+  g.fillRect(r*0.66,-r*0.07,r*0.36,r*0.14);                 /* tread blocks */
+  g.restore();
+ }
+ g.fillStyle=mid;g.beginPath();g.arc(cx,cy,r*0.60,0,7);g.fill();
+ g.fillStyle=hub;g.beginPath();g.arc(cx,cy,r*0.40,0,7);g.fill();
+ g.fillStyle=out;g.beginPath();g.arc(cx,cy,r*0.16,0,7);g.fill();
+}
+/* ---------- the six sponsors (2 visual variants each) ----------
+   Readability-first design: the brand is stacked as one or two HUGE centred
+   lines (~96px, about a third of the face height each) so it stays legible
+   when the sign is only 40-90px wide at mid-range. A bold signature shape
+   carries the identity. The old 12-18px micro-slogans are gone — at mid-
+   range they downscaled to a few px of aliasing mush (the "pixelated" look). */
+function artBeerA(g){   /* KINGPIN ALE — gold day panel */
+ g.fillStyle='#ffc832';g.fillRect(0,0,464,296);
+ g.fillStyle='#14141c';g.fillRect(0,0,464,18);g.fillRect(0,278,464,18);
+ bbCrown(g,232,52,150,40,'#14141c');
+ bbText(g,'KINGPIN',232,128,96,'#14141c');
+ bbText(g,'ALE',232,222,92,'#7a4a00');
+}
+function artBeerB(g){   /* KINGPIN ALE — midnight blue night panel */
+ g.fillStyle='#14265c';g.fillRect(0,0,464,296);
+ g.fillStyle='#ffc832';g.fillRect(0,0,464,18);g.fillRect(0,278,464,18);
+ g.fillStyle='#f4f6ff';g.beginPath();g.arc(404,52,16,0,7);g.fill();
+ g.fillStyle='#14265c';g.beginPath();g.arc(397,47,13,0,7);g.fill();
+ bbCrown(g,232,52,150,40,'#ffc832');
+ bbText(g,'KINGPIN',232,128,96,'#ffc832');
+ bbText(g,'ALE',232,222,92,'#ffffff');
+}
+function artOilA(g){    /* VULCAN 10W-40 — black, red diagonal, big flame */
+ g.fillStyle='#14141c';g.fillRect(0,0,464,296);
+ g.fillStyle='#d92818';g.beginPath();
+ g.moveTo(0,72);g.lineTo(464,28);g.lineTo(464,208);g.lineTo(0,252);g.closePath();g.fill();
+ bbFlame(g,112,150,1.7,'#ffd23e','#ffffff');
+ bbText(g,'VULCAN',300,150,96,'#ffffff','#14141c',5);
+ g.fillStyle='#ffd23e';g.fillRect(196,224,224,54);
+ bbText(g,'10W-40',308,251,40,'#14141c');
+}
+function artOilB(g){    /* VULCAN — red panel, gold flame */
+ g.fillStyle='#d92818';g.fillRect(0,0,464,296);
+ g.fillStyle='#14141c';g.fillRect(0,270,464,26);
+ bbFlame(g,112,150,1.7,'#ffd23e','#ffffff');
+ bbText(g,'VULCAN',300,150,96,'#14141c','#ffffff',4);
+ g.fillStyle='#ffd23e';g.fillRect(200,224,220,54);
+ bbText(g,'FULL SYNTH',310,251,32,'#14141c');
+}
+function artTireA(g){   /* GRIPMAXX — white, bold red/black wordmark */
+ g.fillStyle='#f2f2f2';g.fillRect(0,0,464,296);
+ g.strokeStyle='#14141c';g.lineWidth=10;g.strokeRect(7,7,450,282);
+ bbTire(g,96,150,66,'#14141c','#f2f2f2','#d92818');
+ bbText(g,'GRIP',304,120,96,'#14141c');
+ bbText(g,'MAXX',304,214,96,'#d92818');
+}
+function artTireB(g){   /* GRIPMAXX — black, gold wordmark */
+ g.fillStyle='#14141c';g.fillRect(0,0,464,296);
+ g.strokeStyle='#ffd23e';g.lineWidth=10;g.strokeRect(7,7,450,282);
+ bbTire(g,96,150,66,'#ffd23e','#14141c','#d92818');
+ bbText(g,'GRIP',304,120,96,'#ffd23e');
+ bbText(g,'MAXX',304,214,96,'#d92818','#ffffff',4);
+}
+function artColaA(g){   /* VOLT COLA — deep blue, white wave, gold bolt */
+ g.fillStyle='#0d2f8e';g.fillRect(0,0,464,296);
+ g.fillStyle='#f2f4ff';g.beginPath();
+ g.moveTo(0,214);g.quadraticCurveTo(232,132,464,214);g.lineTo(464,296);g.lineTo(0,296);g.closePath();g.fill();
+ bbBolt(g,44,44,1.0,'#ffd23e','#14141c');
+ bbText(g,'VOLT',296,120,104,'#ffffff','#d92818',5);
+ bbText(g,'COLA',296,214,104,'#ff4040','#06163e',3);
+}
+function artColaB(g){   /* VOLT COLA — red panel, blue bolt */
+ g.fillStyle='#c02015';g.fillRect(0,0,464,296);
+ g.fillStyle='#f4f4f8';g.beginPath();
+ g.moveTo(0,214);g.quadraticCurveTo(232,132,464,214);g.lineTo(464,296);g.lineTo(0,296);g.closePath();g.fill();
+ bbBolt(g,44,44,1.0,'#0d2f8e','#ffffff');
+ bbText(g,'VOLT',296,120,104,'#ffffff','#14141c',4);
+ bbText(g,'COLA',296,214,104,'#0d2f8e');
+}
+function artGameA(g){   /* PIXELPAD — dark synth grid, neon wordmark */
+ g.fillStyle='#101028';g.fillRect(0,0,464,296);
+ g.strokeStyle='rgba(80,100,255,0.30)';g.lineWidth=2;
+ for(let x=24;x<464;x+=48){g.beginPath();g.moveTo(x,0);g.lineTo(x,296);g.stroke();}
+ for(let y=24;y<296;y+=48){g.beginPath();g.moveTo(0,y);g.lineTo(464,y);g.stroke();}
+ bbText(g,'PIXEL',230,112,96,'#ff2fa0');
+ bbText(g,'PIXEL',226,108,96,'#35f2ff');
+ bbText(g,'PAD',230,216,96,'#ffd23e');
+}
+function artGameB(g){   /* PIXELPAD — purple grid, gold/pink wordmark */
+ g.fillStyle='#1c0a30';g.fillRect(0,0,464,296);
+ g.strokeStyle='rgba(255,80,180,0.28)';g.lineWidth=2;
+ for(let x=24;x<464;x+=48){g.beginPath();g.moveTo(x,0);g.lineTo(x,296);g.stroke();}
+ for(let y=24;y<296;y+=48){g.beginPath();g.moveTo(0,y);g.lineTo(464,y);g.stroke();}
+ bbText(g,'PIXEL',232,112,96,'#ffd23e','#14141c',4);
+ bbText(g,'PAD',232,216,96,'#ff2fa0');
+}
+function artTobA(g){    /* SILVER HAZE — light panel, silver band */
+ g.fillStyle='#f2f2f2';g.fillRect(0,0,464,296);
+ g.fillStyle='#cfd4de';g.beginPath();
+ g.moveTo(0,64);g.lineTo(464,26);g.lineTo(464,62);g.lineTo(0,100);g.closePath();g.fill();
+ bbText(g,'SILVER',232,140,92,'#23242e',null,0,'"Georgia","Times New Roman",serif');
+ bbText(g,'HAZE',232,228,96,'#23242e',null,0,'"Georgia","Times New Roman",serif');
+ g.fillStyle='#14141c';g.fillRect(0,266,464,30);
+ bbText(g,'SMOKING KILLS',232,281,20,'#ffffff');
+}
+function artTobB(g){    /* SILVER HAZE — navy panel, gold band */
+ g.fillStyle='#1a2440';g.fillRect(0,0,464,296);
+ g.fillStyle='#c9a227';g.beginPath();
+ g.moveTo(0,64);g.lineTo(464,26);g.lineTo(464,62);g.lineTo(0,100);g.closePath();g.fill();
+ bbText(g,'SILVER',232,140,92,'#e8ecf4',null,0,'"Georgia","Times New Roman",serif');
+ bbText(g,'HAZE',232,228,96,'#c9a227',null,0,'"Georgia","Times New Roman",serif');
+ g.fillStyle='#c9a227';g.fillRect(0,266,464,30);
+ bbText(g,'SMOKING KILLS',232,281,20,'#14141c');
+}
+BB_ART.beer=[artBeerA,artBeerB];
+BB_ART.oil =[artOilA,artOilB];
+BB_ART.tire=[artTireA,artTireB];
+BB_ART.cola=[artColaA,artColaB];
+BB_ART.game=[artGameA,artGameB];
+BB_ART.tob =[artTobA,artTobB];
+/* ---------- composite: face + frame + legs -> one sprite canvas ---------- */
+function bbComposite2D(art){
+ const c=document.createElement('canvas');c.width=BB_CW;c.height=BB_CH;
+ const g=c.getContext('2d');g.scale(BB_RES,BB_RES);   /* draw in 512x448 design space at 2× */
+ const F=BB_FACE;
+ g.fillStyle='#3a4150';                       /* two steel legs, feet at the sprite bottom */
+ g.fillRect(118,F.y+F.h,28,BB_DH-F.y-F.h);g.fillRect(366,F.y+F.h,28,BB_DH-F.y-F.h);
+ g.fillStyle='#5a6478';g.fillRect(118,F.y+F.h,8,BB_DH-F.y-F.h);g.fillRect(366,F.y+F.h,8,BB_DH-F.y-F.h);
+ g.fillStyle='#20242c';g.fillRect(140,F.y+F.h,6,BB_DH-F.y-F.h);g.fillRect(388,F.y+F.h,6,BB_DH-F.y-F.h);
+ g.fillStyle='#14141c';g.fillRect(12,0,F.w+20,F.h+20);   /* black frame */
+ g.drawImage(art,F.x,F.y,F.w,F.h);
+ return c;
+}
+function bbComposite3D(art){
+ /* three.js composite: the ad face is an unlit texture plane (crisp, fully
+    saturated — logo art must not shade), mounted on a lit dark frame with
+    shaded steel legs. Scene units = sprite pixels on the z=0 plane: the
+    camera sits exactly one focal length out, so 1 unit projects to 1 px and
+    every part lands where the 2D composite put it. */
+ const scene=new THREE.Scene();
+ scene.add(new THREE.HemisphereLight(0xdfe8ff,0x1a1d24,0.95));
+ const key=new THREE.DirectionalLight(0xffffff,0.85);key.position.set(2.4,3.2,6);scene.add(key);
+ const rim=new THREE.DirectionalLight(0x9fc0ff,0.25);rim.position.set(-3,1.2,-4);scene.add(rim);
+ const cam=new THREE.PerspectiveCamera(30,BB_DW/BB_DH,1,10000);
+ cam.position.set(0,0,(BB_DH/2)/Math.tan(15*Math.PI/180));
+ const F=BB_FACE,fy=(BB_DH/2)-(F.y+F.h/2);
+ const frameGeo=new THREE.PlaneGeometry(F.w+20,F.h+20);
+ const frameMat=new THREE.MeshLambertMaterial({color:0x14141c});
+ const frame=new THREE.Mesh(frameGeo,frameMat);frame.position.set(0,fy,0);scene.add(frame);
+ const tex=new THREE.CanvasTexture(art);tex.encoding=THREE.sRGBEncoding;
+ const faceGeo=new THREE.PlaneGeometry(F.w,F.h);
+ const faceMat=new THREE.MeshBasicMaterial({map:tex});
+ const face=new THREE.Mesh(faceGeo,faceMat);face.position.set(0,fy,0.02);scene.add(face);
+ const legGeo=new THREE.BoxGeometry(28,144,18);
+ const legMat=new THREE.MeshLambertMaterial({color:0x4a5468});
+ const legL=new THREE.Mesh(legGeo,legMat);legL.position.set(-124,(BB_DH/2)-(F.y+F.h+72),0);
+ const legR=new THREE.Mesh(legGeo,legMat);legR.position.set(124,(BB_DH/2)-(F.y+F.h+72),0);
+ scene.add(legL,legR);
+ bbGL.render(scene,cam);
+ const c=document.createElement('canvas');c.width=BB_CW;c.height=BB_CH;
+ c.getContext('2d').drawImage(bbSrcCv,0,0);   /* flatten NOW (sync) so we can free the GPU bits */
+ faceGeo.dispose();frameGeo.dispose();legGeo.dispose();
+ faceMat.dispose();frameMat.dispose();legMat.dispose();tex.dispose();
+ return c;
+}
+/* ---------- build: art once, sprites once, upgrade to 3D when three arrives ---------- */
+function buildBillboards(){
+ if(bbMode===2)return;
+ if(bbSprites&&typeof THREE==='undefined')return;   /* 2D sprites in place, still no three.js */
+ if(!bbArtCache){
+  bbArtCache={};
+  for(const b in BB_ART)bbArtCache[b]=BB_ART[b].map(fn=>{
+   const c=document.createElement('canvas');c.width=BB_FACE.w*BB_RES;c.height=BB_FACE.h*BB_RES;
+   const g=c.getContext('2d');g.scale(BB_RES,BB_RES);   /* art fn draws in 464x296 -> lands at 2× */
+   try{fn(g);}catch(e){}
+   return c;});
+ }
+ let use3D=false;
+ if(typeof THREE!=='undefined'){
+  try{
+   if(!bbGL){
+    bbSrcCv=document.createElement('canvas');bbSrcCv.width=BB_CW;bbSrcCv.height=BB_CH;
+    bbGL=new THREE.WebGLRenderer({canvas:bbSrcCv,alpha:true,antialias:true});
+    bbGL.setClearColor(0x000000,0);
+    bbGL.setSize(BB_CW,BB_CH,false);
+   }
+   use3D=true;
+  }catch(e){bbGL=null;}
+ }
+ const spr={};
+ for(const bb of BB_LIST){
+  const k=bb.b+'_'+bb.v;
+  if(spr[k])continue;
+  const art=bbArtCache[bb.b][bb.v];
+  if(use3D){try{spr[k]=bbComposite3D(art);continue;}catch(e){}}
+  spr[k]=bbComposite2D(art);
+ }
+ bbSprites=spr;bbMode=use3D?2:1;
+ for(const bb of BB_LIST)bb.cv=bbSprites[bb.b+'_'+bb.v];
+ return bbMode;
+}
+/* ---------- per-frame: project onto its row and blit (same math as the cars) ---------- */
+function drawBillboard(d,bb,s){
+ const f=(d%SEG_LEN)/SEG_LEN;
+ /* exact 1/z perspective of the sign's own anchor point — the same formula
+    the rows, cars and gantry use, so it rides the curve, crests the hill
+    and zooms in smoothly with zero lerp wobble */
+ const sc=CAM_D/Math.max(d,20);
+ const cx=VW/2+sc*(s.ax+f*s.adx-playerX*ROAD_HALF)*VW/2;
+ const cy=HZ-sc*(s.p1[1]+(s.p2[1]-s.p1[1])*f-s.camY)*FOCAL_V;
+ const cw=sc*ROAD_HALF*VW/2;
+ const w=cw*BB_WORLD/ROAD_HALF;               /* on-screen width of the ad face */
+ if(w<3)return;                               /* a speck on the horizon — unreadable, skip */
+ if(w>190)return;                             /* whooshing past the player: arcade pop-out */
+ const x=cx+bb.s*BB_OFF*cw;                   /* centre of the face, past the kerb */
+ if(x<-w*0.6||x>VW+w*0.6)return;              /* fully off this side of the screen */
+ const h=w*BB_CH/BB_CW;                       /* sprite height: face + legs down to the ground */
+ if(cy-h>=s.clip)return;                      /* even its top is behind the crest */
+ const clipped=cy>s.clip;
+ if(clipped){ctx.save();ctx.beginPath();ctx.rect(0,0,VW,s.clip);ctx.clip();}
+ ctx.save();
+ ctx.imageSmoothingEnabled=true;              /* bilinear = smooth 3D sprite in the 8-bit world */
+ ctx.drawImage(bb.cv,x-w/2,cy-h,w,h);
+ ctx.restore();
+ if(clipped)ctx.restore();
+}
+/* =====================================================================
+   f1.fbx — the real 121k-triangle F1 model. Measured facts (parsed
+   headless with the SAME three r128 the game runs): cm units, long
+   axis = X (496.7), width = Z (186.6), height = Y (108.6); the REAR
+   (tall wing, maxY 107.8) is at +X. So:
+     rotation.y = -PI/2  -> rear onto +Z (the camera sees the rear)
+     scale        = 2.04/186.6 -> width 2.04 game units (1 unit = 1 m)
+     position.y   = +half height -> tyre line at y=0
+   i.e. the model is normalized into the EXACT same local space as the
+   procedural car, so the projection-anchored blit below stays perfect
+   for both (verified: all 8 bbox corners stay inside the sprite canvas
+   at every player/AI yaw and roll the game produces).
+   r128's FBXLoader needs the `fflate` global (this file stores
+   zlib-compressed properties), so it is loaded first.
+   If anything fails (offline, missing file, no WebGL) the procedural
+   low-poly car simply stays — the game never breaks.
+   ===================================================================== */
+let fbxPending=false;
+function loadScriptTag(src){
+ return new Promise(function(res,rej){
+  if(document.querySelector&&document.querySelector('script[src="'+src+'"]'))return res();
+  const s=document.createElement('script');
+  s.src=src;s.onload=res;
+  s.onerror=function(){rej(new Error('script load failed: '+src));};
+  (document.head||document.documentElement).appendChild(s);
+ });
+}
+function loadFbxCar(){
+ if(fbxPending)return;
+ if(!carGL||typeof THREE==='undefined')return;   /* keep the procedural car */
+ fbxPending=true;
+ loadScriptTag('https://cdn.jsdelivr.net/npm/fflate@0.3.10/umd/index.js')
+  .then(function(){
+   if(typeof fflate==='undefined')throw new Error('fflate missing');
+   return loadScriptTag('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js');
+  })
+  .then(function(){
+   if(!THREE.FBXLoader)throw new Error('FBXLoader missing');
+   /* f1.fbx still asks the browser to fetch "Wrinkle_Map.jpg" — a stale name
+      left over from the model's original DCC project (the file ships nowhere,
+      so the browser logs a 404; no material slot actually uses it). Remap
+      known stale names to the texture files that DO ship next to the game —
+      the four livery maps the car renders already point at
+      formula1_DefaultMaterial_*.png. The hook is only live for the duration
+      of this one FBX load. */
+   var TMAP={'Wrinkle_Map.jpg':'formula1_DefaultMaterial_Height.png'};
+   var origLoad=THREE.TextureLoader.prototype.load;
+   THREE.TextureLoader.prototype.load=function(url){
+    var u=String(url),base=u.split('/').pop();
+    if(TMAP[u])u=TMAP[u];
+    else if(TMAP[base])u=TMAP[base];
+    return origLoad.call(this,u,arguments[1],arguments[2],arguments[3]);
+   };
+   var restore=function(){try{THREE.TextureLoader.prototype.load=origLoad;}catch(e){}};
+   return new Promise(function(res,rej){
+    new THREE.FBXLoader().load('f1.fbx',
+     function(f){restore();res(f);},undefined,
+     function(e){restore();rej(e);});
+   });
+  })
+  .then(function(fbx){try{installF1Model(fbx);}catch(e){}})
+  .catch(function(){});   /* any failure: keep the procedural low-poly car */
+}
+function installF1Model(fbx){
+ if(!carGL)return;
+ try{
+  /* ---- normalize into the procedural car's local space (measured above) ---- */
+  fbx.updateMatrixWorld(true);
+  const box=new THREE.Box3().setFromObject(fbx);
+  const size=new THREE.Vector3(),ctr=new THREE.Vector3();
+  box.getSize(size);box.getCenter(ctr);
+  if(size.x<size.z)throw new Error('unexpected model axes');   /* this asset is long on X */
+  const s=2.04/size.z;                    /* width -> 2.04 game units (1 unit = 1 m) */
+  const wrap=new THREE.Group();
+  fbx.scale.setScalar(s);
+  fbx.rotation.y=-Math.PI/2;             /* measured: rear (high wing) is +X -> onto +Z */
+  fbx.position.set(-ctr.x*s,-ctr.y*s,-ctr.z*s);   /* car centre onto the wrap origin */
+  wrap.add(fbx);
+  wrap.position.y=size.y*s/2;            /* tyre line -> y=0 */
+  wrap.traverse(function(o){if(o.isMesh)o.frustumCulled=false;});
+  /* ---- split the tyres (black) and rims (grey) off the body material ----
+     The asset is ONE mesh whose tyres share the livery material, so they
+     would otherwise be painted the body colour. Classification is by
+     position, measured on this model (model space, cm): each tyre is a
+     low-poly rounded box (not a true cylinder) spanning these x-y ranges:
+     front: x -186..-110, y 2..62  (buried under the nose; the box also reaches
+             the wheel ARCH that the rear camera reads as the tyre's back);
+     rear:  x 155..226,  y 0..68.
+     The front box carries a zmin gate (|z|>=45) so it only recolors the OUTER
+     wheel (tyre + arch, at |z| ~45..95) and never the centre bodywork
+     (chassis/cockpit, at |z| < ~40) — 45 sits in the clean gap between them.
+     Inside the box:
+     within 18cm of the box centre -> rim/hub  -> grey
+     the rest of the box           -> tyre     -> black
+     anything else           -> bodywork (keeps the livery)
+     Applies to every car (hero + AI) — only the body gets the unique colour. */
+  carFixedMats=[
+    new THREE.MeshPhongMaterial({color:0x8f949c,specular:0x5a5f66,shininess:60}),   /* rims */
+    new THREE.MeshPhongMaterial({color:0x151517,specular:0x232326,shininess:12})    /* tyres */
+  ];
+  const TIREBOX=[{x1:-186,x2:-110,y1:2,y2:62,cx:-157,cy:31,zmin:45},{x1:155,x2:226,y1:0,y2:68,cx:189,cy:30}];
+  fbx.traverse(function(o){
+   if(!o.isMesh)return;
+   const g=o.geometry;
+   const pos=g.attributes.position;
+   const P=pos.array;
+   const faces=pos.count/3;
+   const groups=(g.groups&&g.groups.length)?g.groups:[{start:0,count:faces*3,materialIndex:0}];
+   const faceMat=new Uint8Array(faces);
+   for(let f=0;f<faces;f++)for(const gr of groups){
+    const a=gr.start/3,b=a+gr.count/3;
+    if(f>=a&&f<b){faceMat[f]=gr.materialIndex;break;}
+   }
+   const list=Array.isArray(o.material)?o.material:[o.material];
+   let bodyIdx=0;for(let i=0;i<list.length;i++)if(list[i]&&list[i].map){bodyIdx=i;break;}
+   const bodyB=[],rimB=[],tireB=[],otherB=[];   /* face-index buckets */
+   for(let f=0;f<faces;f++){
+    const fm=faceMat[f];
+    if(fm!==bodyIdx){otherB.push([f,fm]);continue;}
+    const cx=(P[f*9]+P[f*9+3]+P[f*9+6])/3;
+    const cy=(P[f*9+1]+P[f*9+4]+P[f*9+7])/3;
+    const cz=(P[f*9+2]+P[f*9+5]+P[f*9+8])/3;
+     if(!isFinite(cx)||!isFinite(cy)){bodyB.push(f);continue;}
+     const bx=TIREBOX.find(function(b){return cx>=b.x1-2&&cx<=b.x2+2&&cy>=b.y1-2&&cy<=b.y2+2&&(!b.zmin||Math.abs(cz)>=b.zmin);});   /* x-y box around each tyre (zmin keeps centre bodywork livery) */
+     if(bx){
+      const d=Math.hypot(cx-bx.cx,cy-bx.cy);
+      (d<18?rimB:tireB).push(f);   /* hub disc -> grey, tyre shell -> black */
+     }else bodyB.push(f);
+    }
+const buildGeom=function(fl){    /* fresh per-bucket geometry (subset of the source) */
+    const ng=new THREE.BufferGeometry();
+    for(const name in g.attributes){
+     const a=g.attributes[name],is=a.itemSize,arr=a.array;
+     const out=new Float32Array(fl.length*3*is);
+     let oo=0;
+     for(let i=0;i<fl.length;i++){
+      const base=fl[i]*3*is;
+      for(let k=0;k<3*is;k++)out[oo++]=arr[base+k];
+     }
+     ng.setAttribute(name,new THREE.BufferAttribute(out,is));
+    }
+    return ng;
+   };
+   const parent=o.parent||fbx;
+   const put=function(fl,mat){
+    if(!fl.length)return;
+    const m=new THREE.Mesh(buildGeom(fl),mat);
+    m.frustumCulled=false;
+    parent.add(m);
+   };
+   put(bodyB,list[bodyIdx]);        /* bodywork keeps the livery material */
+   put(rimB,carFixedMats[0]);       /* rims: grey */
+   put(tireB,carFixedMats[1]);      /* tyres: black */
+   const byMat={};
+   for(const e of otherB)(byMat[e[1]]=byMat[e[1]]||[]).push(e[0]);
+   for(const k in byMat)put(byMat[k],list[k]);   /* mirrors/fillers keep their (black) material */
+   parent.remove(o);
+   g.dispose();
+  });
+  /* recolorable body = the livery material(s). The model's texture files are
+     external references; drop any map whose image is already known to be
+     broken (a broken texture would render the body black) */
+  const mats=[];
+  fbx.traverse(function(o){
+   if(!o.isMesh)return;
+   const list=Array.isArray(o.material)?o.material:[o.material];
+   for(const m of list){
+    if(!m||mats.indexOf(m)>=0)continue;
+    if(m.map){
+     const img=m.map.image;
+     if(img&&img.complete===true&&img.naturalWidth===0)m.map=null;
+     else mats.push(m);
+    }
+   }
+  });
+  if(!mats.length){   /* no textured material: fall back to the non-black ones
+                       (the fixed tyre/rim materials are NEVER recolourable) */
+   fbx.traverse(function(o){
+    if(!o.isMesh)return;
+    const list=Array.isArray(o.material)?o.material:[o.material];
+    for(const m of list){
+     if(!m||!m.color||mats.indexOf(m)>=0)continue;
+     if(carFixedMats&&carFixedMats.indexOf(m)>=0)continue;
+     if(m.color.getHex()>0x333333)mats.push(m);
+    }
+   });
+  }
+  /* blit anchors for this car (half-length along Z after the 90-degree turn) */
+  const half=size.x*s/2;
+  const anchor={
+   L:[-1.0,size.y*s*0.35,0],
+   R:[1.0,size.y*s*0.35,0],
+   contacts:[[0.87,0,-(half-0.12*size.x*s)],[-0.87,0,-(half-0.12*size.x*s)],
+             [0.87,0,half-0.10*size.x*s],[-0.87,0,half-0.10*size.x*s]]
+  };
+  /* ---- atomic swap: everything above is ready, NOW replace the old car ---- */
+  const oldGroup=carGroup;
+  if(oldGroup){
+   carScene.remove(oldGroup);
+   oldGroup.traverse(function(o){if(o&&o.geometry)o.geometry.dispose();});
+  }
+  const oldMats=carBodyMats;
+  if(oldMats)for(const m of oldMats){if(m&&m.dispose)m.dispose();}
+  carScene.add(wrap);
+  carGroup=wrap;
+  carIsFbx=true;
+  /* ---- livery texture finishing ----
+     The FBX carries the four maps, but three r128 samples them as LINEAR by
+     default, which washes the paint colours out — the Diffuse/Specular PNGs
+     are sRGB, so flag them (r128 then converts sRGB->linear at sample time).
+     Everything else (specular 0x333333, shininess 32, bumpScale 0.2,
+     normalScale 1,1) is left at the FBX's own values: a brighter specular
+     was tried and it just laid a flat grey sheen over the red/black/white
+     livery, hiding the paint. */
+  for(const m of mats){
+   if(m.map&&m.map.encoding===THREE.LinearEncoding)m.map.encoding=THREE.sRGBEncoding;
+   if(m.specularMap&&m.specularMap.encoding===THREE.LinearEncoding)m.specularMap.encoding=THREE.sRGBEncoding;
+  }
+  if(mats.length)carBodyMats=mats;
+  carAnchor=anchor;
+  _heroTex=undefined;   /* fresh model — its livery texture is re-detected on the first paints */
+  carLastCol=null;   /* force the body colour to be re-applied on the first paint */
+ }catch(e){
+  /* leave the procedural car in place — the game keeps running */
+   if(typeof console!=='undefined')console.error('installF1Model failed:',e);
+ }
+}
+function paintCar(col,yaw,roll){
+ if(!carGL)return false;
+ try{
+  let target=col;
+  if(carIsFbx){
+   const bm=carBodyMats&&carBodyMats[0];
+   if(bm){
+    if(bm.map){   /* texture may 404 AFTER install (async): re-check each paint */
+     const img=bm.map.image;
+     if(img&&img.complete===true&&img.naturalWidth===0){  /* definitively broken */
+      if(_heroTex===bm.map)_heroTex=undefined;
+      bm.map=null;
+     }
+    }
+    /* EVERY car (hero + AI): a pure arcade body colour — hide the shared
+       livery texture while painting (stashed in _heroTex in case a textured
+       mode ever wants it back). Player = RED, rivals = their own solid
+       colours; the fixed black tyres / grey rims are never recoloured. */
+    if(bm.map!==null&&_heroTex===undefined)_heroTex=bm.map;
+    bm.map=null;
+   }
+  }
+  if(carLastCol!==target){for(const m of carBodyMats)m.color.set(target);carLastCol=target;}
+  carGroup.rotation.set(0,yaw,roll||0);
+  carGL.render(carScene,carCam);
+  return true;
+ }catch(e){killCarGL();return false;}   /* e.g. lost WebGL context: fall back, never crash the frame */
+}
+let _pm=null,_ppm=null,_pv=null;   /* shared scratch for projection (no per-frame allocs) */
+function carProj(x,y,z,yaw,roll){  /* model point -> car-canvas pixels at the given yaw/roll */
+ if(!_pm){_pm=new THREE.Matrix4();_ppm=new THREE.Matrix4();_pv=new THREE.Vector3();}
+ _pm.makeRotationY(yaw);
+ if(roll)_pm.multiply(_ppm.makeRotationZ(roll));
+ _pv.set(x,y,z).applyMatrix4(_pm).project(carCam);
+ return [(_pv.x*0.5+0.5)*CAR_CW,(0.5-_pv.y*0.5)*CAR_CH];
+}
+function blitCar(col,yaw,roll,cx,cyRoad,w){
+ /* anchor: the tyre contact line lands on road row cyRoad, and the on-road
+    width w matches the car's real width — so the sprite always sits on the
+    road with correct proportions, at any yaw. The anchor points come from
+    carAnchor (procedural car by default, the FBX car after installF1Model) */
+ if(!paintCar(col,yaw,roll))return false;
+ try{
+  const L=carProj(carAnchor.L[0],carAnchor.L[1],carAnchor.L[2],yaw,roll),
+        R=carProj(carAnchor.R[0],carAnchor.R[1],carAnchor.R[2],yaw,roll);
+  let bot=-1e9;
+  for(const tp of carAnchor.contacts){
+   const p=carProj(tp[0],tp[1],tp[2],yaw,roll);
+   if(p[1]>bot)bot=p[1];
+  }
+  const k=w/Math.max(4,Math.abs(R[0]-L[0]));
+  ctx.save();
+  ctx.imageSmoothingEnabled=true;   /* bilinear downscale = smooth 3D sprite in the 8-bit world */
+  ctx.drawImage(carGL.domElement,0,0,CAR_CW,CAR_CH,
+   cx-(L[0]+R[0])*k/2, cyRoad-bot*k, CAR_CW*k, CAR_CH*k);
+  ctx.restore();
+  return true;
+ }catch(e){killCarGL();return false;}
+}
+/* ---------- pseudo-3D road (mode-7 style, drawn near to far) ---------- */
+function rowQuad(cx1,w1,cx2,w2,y1,y2,col){
+ ctx.fillStyle=col;ctx.beginPath();
+ ctx.moveTo(cx1-w1,y1);ctx.lineTo(cx1+w1,y1);ctx.lineTo(cx2+w2,y2);ctx.lineTo(cx2-w2,y2);
+ ctx.closePath();ctx.fill();
+}
+function sliceQuad(cx1,w1,cx2,w2,f1,f2,y1,y2,col){
+ ctx.fillStyle=col;ctx.beginPath();
+ ctx.moveTo(cx1+f1*w1,y1);ctx.lineTo(cx1+f2*w1,y1);ctx.lineTo(cx2+f2*w2,y2);ctx.lineTo(cx2+f1*w2,y2);
+ ctx.closePath();ctx.fill();
+}
+function drawSeg(s,n,bot,bx1,bw1){
+ const b=((s.i/RUMBLE)|0)%2;
+ const top=s.sy2;
+ /* grass exactly [top,bot-1] — the boundary row below belongs to the nearer
+    segment, so never paint it (old top-1/+2 overhang leaked a grass stripe
+    across the road at every seam). Quads overhang 1px upward and +1px wide
+    to seal seams instead of grass showing through the edges.
+    Full-strength 8-bit palette, no distance haze: the road runs crisp all
+    the way to the horizon (no grey band at the crest). */
+ ctx.fillStyle=b?PAL.grassA:PAL.grassB;
+ ctx.fillRect(0,top,VW,bot-top);           /* grass (full width) */
+ rowQuad(s.sx2,s.sw2*1.3+1,bx1,bw1*1.3+1,top-1,bot,b?PAL.rumA:PAL.rumB); /* red/white curb */
+ if(s.i===2){                              /* checkered START line: a single clean band (pos 400-600)
+                                           that the gate stands ON: its pillar base sits at pos 500,
+                                           the band's centre, so crossing the line = passing under the gate,
+                                           exactly like the arcade. */
+  rowQuad(s.sx2,s.sw2+1,bx1,bw1+1,top-1,bot,PAL.roadA);
+  for(let k=0;k<8;k++){
+   sliceQuad(s.sx2,s.sw2+1,bx1,bw1+1,2*k/8-1,2*(k+1)/8-1,top-1,bot,
+             (k+s.i)%2?PAL.lane:PAL.black);
+  }
+ }else{
+  rowQuad(s.sx2,s.sw2+1,bx1,bw1+1,top-1,bot,b?PAL.roadA:PAL.roadB);
+  if(b)rowQuad(s.sx2,s.sw2*0.07,bx1,bw1*0.07,top-1,bot,PAL.lane); /* center dashes */
+ }
+}
+function renderRoad(){
+ const baseIdx=Math.floor(pos/SEG_LEN)%segs.length;
+ const basePct=(pos%SEG_LEN)/SEG_LEN;
+ const base=segs[baseIdx];
+ const camY=CAM_H+base.p1[1]+(base.p2[1]-base.p1[1])*basePct;
+ let x=0,dx=-(base.c*basePct),maxy=VH+1;
+ for(let n=0;n<DRAW_DIST;n++){
+  const s=segs[(baseIdx+n)%segs.length];
+  const camZ=pos-((baseIdx+n)>=segs.length?trackLen:0);
+  const sc1=CAM_D/Math.max(s.p1[2]-camZ,20),sc2=CAM_D/Math.max(s.p2[2]-camZ,20);
+  const sx1=VW/2+sc1*(x-playerX*ROAD_HALF)*VW/2;
+  const sx2=VW/2+sc2*(x+dx-playerX*ROAD_HALF)*VW/2;
+  const sy1=HZ-sc1*(s.p1[1]-camY)*FOCAL_V;
+  const sy2=HZ-sc2*(s.p2[1]-camY)*FOCAL_V;
+  const sw1=sc1*ROAD_HALF*VW/2,sw2=sc2*ROAD_HALF*VW/2;
+  x+=dx;dx+=s.c;
+  s.sx1=Math.round(sx1);s.sy1=Math.round(sy1);s.sw1=sw1;
+  s.sx2=Math.round(sx2);s.sy2=Math.round(sy2);s.sw2=sw2;
+  s.ax=x;s.adx=dx;s.camY=camY;   /* world-space row data — cars project their EXACT point with
+                                    the 1/z formula. A screen-space lerp between the two rows
+                                    bobs the car a few px every 200 units, and the bob grows
+                                    with row size — that's why close rivals looked jerky while
+                                    distant ones looked fine */
+  if(sy2>=sy1){s.clip=maxy;continue;}   /* folded over the crest: refresh the crest line so a rival
+                                          can still peek over the top (clipping keeps its base pinned
+                                          at the crest — it can never float BELOW it). The old -1
+                                          hard-kill made the cresting car pop instead of cresting over */
+  s.clip=maxy;                              /* crest occlusion line for cars */
+  let bot=s.sy1,bx1=s.sx1,bw1=sw1;
+  if(bot>maxy){                             /* clip against nearer crest */
+   if(s.sy2>=maxy){s.clip=maxy;continue;}   /* whole row behind the crest: refresh its crest line NOW
+                                               (it used to keep last frame's value — the stale
+                                               boundary made rivals flicker as the Z moved) */
+   const t=(maxy-s.sy2)/(bot-s.sy2);
+   bx1=s.sx2+t*(s.sx1-s.sx2);
+   bw1=s.sw2+t*(sw1-sw2);
+   bot=maxy;
+  }
+  drawSeg(s,n,bot,bx1,bw1);
+  maxy=Math.min(maxy,s.sy2);
+ }
+  try{drawPuddles(baseIdx);}catch(e){}   /* water on the tarmac: after the road, before the cars */
+ /* gate + AI cars go after the road, far first (painter's order) —
+    the gantry sorts into the same list so cars correctly pass under it */
+ const list=[];
+ for(const a of ais){
+  const d=(((a.pos-pos)%trackLen)+trackLen)%trackLen;
+  if(d>SEG_LEN&&d<DRAW_DIST*SEG_LEN){
+   const s=segs[(baseIdx+((d/SEG_LEN)|0))%segs.length];
+   if(s.clip!==undefined)list.push({d,a,s});
+  }
+ }
+ const dg=(((GANTRY_POS-pos)%trackLen)+trackLen)%trackLen;
+ if(dg>0&&dg<DRAW_DIST*SEG_LEN){   /* keep drawing until the player is actually past it —
+                                      the gate whooshes OVERHEAD smoothly, no early pop-out */
+  const sg=segs[(baseIdx+((dg/SEG_LEN)|0))%segs.length];
+  if(sg.clip!==undefined)list.push({d:dg,gantry:true,s:sg});
+ }
+ for(const bb of BB_LIST){      /* roadside billboards: same painter's list, so a car and
+                                   a sign can never draw in the wrong order */
+  const db=(((bb.p-pos)%trackLen)+trackLen)%trackLen;
+  if(db>SEG_LEN&&db<DRAW_DIST*SEG_LEN){
+   const sb=segs[(baseIdx+((db/SEG_LEN)|0))%segs.length];
+   if(sb.clip!==undefined)list.push({d:db,bb,s:sb});
+  }
+  }
+ list.sort((p,q)=>q.d-p.d);
+ for(const it of list)
+  it.gantry?drawGantry(it.d,it.s):it.bb?drawBillboard(it.d,it.bb,it.s):drawAICar(it.d,it.a,it.s);
+}
+function drawAICar(d,a,s){
+ const f=(d%SEG_LEN)/SEG_LEN;
+ /* EXACT 1/z perspective of the car's own world point — the same formula the
+    rows use, evaluated at the car's true depth d. (The old screen-space lerp
+    between the two endpoint rows is only an approximation of the 1/z curve:
+    it bobs the car up to ~6px every 200 units, and that bob scales with row
+    size — so distant cars looked fine while close ones looked jerky.) */
+ const sc=CAM_D/Math.max(d,20);
+ const cx=VW/2+sc*(s.ax+f*s.adx-playerX*ROAD_HALF)*VW/2;
+ const cy=HZ-sc*(s.p1[1]+(s.p2[1]-s.p1[1])*f-s.camY)*FOCAL_V;
+ const cw=sc*ROAD_HALF*VW/2;
+ if(s.clip<0)return;                        /* folded/hidden row: nothing can peek over it */
+ const w=cw*CAR_WORLD/ROAD_HALF;
+ if(w<4||w>73)return;                        /* pop out behind player, like the arcade (73 = 110 scaled to the 2/3 car size) */
+ if(cy>=s.clip+w)return;                    /* base a full car-height behind the crest: entirely hidden */
+ const x=cx+a.x*cw;                    /* car centre on its road row */
+ /* RUBBER OFF THE REAR TYRES: a rival biting a fast corner or panic-dodging
+    at speed chips black bits off its tread, weighted to the outer tyre.
+    Defensive reads — headless test slices of this function run it with bare
+    car objects, so a.v/a.dodge may be undefined (slip then stays 0 and
+    nothing is spawned). */
+ {
+  const MAXS=(typeof MAX_SPEED!=='undefined'&&MAX_SPEED)||9000;
+  const srA=(a.v||0)/MAXS;
+  if(srA>0.3){
+   const c0=curveAt(a.pos)||0;
+   const slip=Math.min(1,Math.abs(a.dodge||0)/0.6*srA+Math.min(1,Math.abs(c0)/2.8)*srA);
+   if(slip>0.5){
+    const k=(slip-0.5)/0.5,off=Math.max(3,w*0.42),yy=cy-1,dir=c0>=0?1:-1;
+    spawnRubber(x+off*dir,yy,dir,k);
+    spawnRubber(x-off*dir,yy,-dir,k*0.4);
+   }
+  }
+ }
+ /* AI cars follow the road: a SUBTLE yaw into the corner. Real-world
+    steering at speed is only a few degrees of body angle — the old ±0.6
+    rad (~34°) made the car look like it was cartwheeling on sharp turns */
+ const yaw=clamp(-curveAt(a.pos)*0.12,-0.25,0.25);   /* max ~14° into a full corner */
+ /* Crest occlusion without flicker: the old hard show/hide test
+    (cy>=clip -> invisible) toggled a rival fully ON/OFF every frame its
+    row crossed the crest while the Z level moved — the flicker. Instead
+    the sprite is CLIPPED to the crest line, so a rival crests the hill
+    smoothly: the roof peeks over first and the car grows out row by row,
+    exactly like a real car over the top. No popping, no frame-to-frame
+    on/off, whether the 3D sprite or the 8-bit fallback is being drawn. */
+ const clipped=cy>s.clip;
+ if(clipped){ctx.save();ctx.beginPath();ctx.rect(0,0,VW,s.clip);ctx.clip();}
+ if(blitCar(a.col,yaw,-yaw*0.16,x,cy,w)){if(clipped)ctx.restore();return;}
+ /* 8-bit fallback */
+ const h=Math.round(w*13/18);
+ ctx.drawImage(carSprite(a.col),Math.round(x-w/2),Math.round(cy-h),Math.round(w),h);
+ if(clipped)ctx.restore();
+}
+let bounceT=0;
+function drawPlayerCar(){
+ const sr=clamp(speed/MAX_SPEED,0,1);
+ const w=36;   /* player car width (px) — 2/3 scale (33% smaller) so it fits the road */
+ let cx=VW/2;
+ if(state==='race'){
+  cx+=Math.round(steerHeld()*2);
+  if(Math.abs(playerX)>1.08)cx+=((Math.random()*3)|0)-1;  /* rumble on grass */
+  if(playerHitT>0||playerStopT>0)cx+=((Math.random()*4)|0)-2;             /* jolt while recovering from a bump */
+ }
+ const by=Math.round(Math.sin(bounceT)*sr*1.4);
+ /* RUBBER OFF THE REAR TYRES: a hard, fast lock (the same condition that
+    triggers the screech) chips little black bits off the tread — the OUTER
+    (off-turn) tyre bites hardest and sprays the most, the inner one less */
+ {
+  const st=steerHeld(),s=Math.abs(st)*(speed/MAX_SPEED);
+  if(s>0.5&&speed>MAX_SPEED*0.2){
+   const k=(s-0.5)/0.5,yy=VH-1,off=13;
+   if(st>0){spawnRubber(cx-off,yy,-1,k);spawnRubber(cx+off,yy,1,k*0.4);}   /* right lock: left tyre is outside */
+   else if(st<0){spawnRubber(cx+off,yy,1,k);spawnRubber(cx-off,yy,-1,k*0.4);}
+  }
+ }
+ /* the 3D car turns ONLY from the player's steering: yaw is proportional to
+    the steer input, but SUBTLY (full lock ≈ 8° — like a real car at speed;
+    the old ≈20° looked like the car was headed diagonally off the road)
+    with snappy easing and a light body
+    bank. It does NOT auto-follow road curves — hold straight into a corner
+    and centrifugal force drifts the car onto the grass (where it slows), so
+    keeping it on tarmac is the player's job. That is the challenge.
+    (Max yaw/roll verified to stay inside the 768x352 sprite canvas.) */
+ const targetYaw=-(steerHeld()*0.14);   /* max ~8° at full lock: subtle, realistic body angle */
+ pYaw+=(targetYaw-pYaw)*0.30;
+ if(blitCar(PLAYER_COL,pYaw,-pYaw*0.28,cx,VH+by,w))return;
+ /* 8-bit fallback */
+ const h=Math.round(w*13/18);
+ ctx.drawImage(playerSpr,cx-w/2,VH-h+by,w,h);
+}
+/* ---------- rubber bits ----------
+   Little black chunks of tyre rubber flicked off the rear tyres when a car
+   (hero or rival) bites into a hard turn at speed — the same condition that
+   triggers the screech. Pure 2D particles on the pixel canvas: 1-2px squares
+   that spray sideways off the tyre contact patch, arc up slightly, drop back
+   to the tarmac and die fast — chunky 8-bit grit, not smooth smoke. */
+const RUBBER_COLS=['#0b0b0d','#131315','#1b1b1f','#232327'];
+let rubber=[];
+const RUBBER_MAX=40;   /* modest pool: this effect is a hint of grit, not a snowstorm */
+function spawnRubber(x,y,side,strength){
+ if(strength<=0.02||rubber.length>=RUBBER_MAX)return;
+ const n=Math.random()>strength*0.20?0:1;   /* a bit more grit: ~10-12 bits/sec per tyre at full lock */
+ for(let i=0;i<n;i++){
+  const sp=15+Math.random()*28;
+  rubber.push({
+   x:x+(Math.random()*4-2),y:y-Math.random()*2,
+   vx:side*sp,
+   vy:-(4+Math.random()*14),            /* flick up off the tread... */
+   g:140+Math.random()*90,               /* ...then drop back to the tarmac */
+   s:Math.random()<0.9?1:2,
+   t:0,life:0.20+Math.random()*0.18,
+   c:RUBBER_COLS[(Math.random()*RUBBER_COLS.length)|0]
+  });
+ }
+}
+function stepRubber(dt){
+ for(let i=rubber.length-1;i>=0;i--){
+  const p=rubber[i];
+  p.t+=dt;
+  if(p.t>=p.life){rubber.splice(i,1);continue;}
+  p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=p.g*dt;
+  if(p.y>VH+2)p.y=VH+2;                  /* bits can't sink past the screen floor */
+ }
+}
+function drawRubber(){
+ if(!rubber.length)return;
+ for(const p of rubber){
+  ctx.globalAlpha=Math.max(0,1-p.t/p.life);
+  ctx.fillStyle=p.c;
+  ctx.fillRect(p.x|0,p.y|0,p.s,p.s);
+ }
+ ctx.globalAlpha=1;
+}
+/* ---------- billboard-post crash FX (sparks + flying pieces) ----------
+   Any car (hero or rival) that smashes into a sign's grey post is stopped dead
+   for CRASH_STOP seconds while a burst of sparks and body pieces flies off. The
+   burst is anchored to the POST in world space and re-projected every frame with
+   the exact 1/z math the signs and cars use, so it stays glued to the crash point
+   even as the camera drives on. Particles are plain 2D squares on the pixel
+   canvas — chunky 8-bit grit, like the rubber bits — scaled with distance. */
+const CRASH_STOP=2.0;                 /* seconds a crashed car is immobilized, then it pulls away */
+const POST_HIT_X=1.25;                /* car centre this far off-line (road units) = contact with the
+                                         sign's frame: just past the kerb, where the post stands */
+const SPARK_COLS=['#fff7d6','#ffe59a','#ffc94a','#ff9d33','#ff7a22'];
+const DEBRIS_DARK=['#26262c','#33333b','#1c1c22'];
+let crashFx=[];                       /* active bursts: {pos, x, side, flash, parts:[...]} */
+let bbHitCd={};                       /* per (car, sign) post-crash immunity, keyed carId*32+signIndex
+                                         (BB_LIST has 20 signs). VALUE = the lap the crash happened on:
+                                         the car stays immune to that post until it COMPLETES that lap
+                                         (its lap counter advances past it), so it can't be stopped dead
+                                         twice in a row by the same post. */
+function projAnchor(worldPos){
+ /* project a track position to the screen (road-centre x + ground-line y) using the
+    same 1/z formula as the cars/billboards — null when it isn't on the visible sheet */
+ const d=(((worldPos-pos)%trackLen)+trackLen)%trackLen;
+ if(d<20||d>DRAW_DIST*SEG_LEN)return null;
+ const base=Math.floor(pos/SEG_LEN);
+ const s=segs[(base+Math.floor(d/SEG_LEN))%segs.length];
+ if(!s||s.clip===undefined)return null;
+ const f=(d%SEG_LEN)/SEG_LEN;
+ const sc=CAM_D/Math.max(d,20);
+ const cx=VW/2+sc*(s.ax+f*s.adx-playerX*ROAD_HALF)*VW/2;
+ const cy=HZ-sc*(s.p1[1]+(s.p2[1]-s.p1[1])*f-s.camY)*FOCAL_V;
+ const cw=sc*ROAD_HALF*VW/2;
+ return{x:cx,y:cy,cw};
+}
+function spawnCrashFx(worldPos, xRoad, side, bodyCol){
+ const parts=[];
+ // sparks: bright, fast, short — the flash of metal on metal
+ for(let i=0;i<20;i++){
+  const a=Math.random()*Math.PI*2, sp=55+Math.random()*95;
+  parts.push({ox:0,oy:0,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-30,g:120+Math.random()*120,
+   s:1,life:0.28+Math.random()*0.26,t:0,c:SPARK_COLS[(Math.random()*SPARK_COLS.length)|0]});
+ }
+ // pieces: body-colour + dark-metal shards — slower, arc further, live longer,
+ // kicked back AWAY from the post (the car rebounds off the frame)
+ for(let i=0;i<16;i++){
+  const a=Math.random()*Math.PI*2, sp=30+Math.random()*45;
+  parts.push({ox:0,oy:0,vx:Math.cos(a)*sp-side*18,vy:-(18+Math.random()*40),g:150+Math.random()*110,
+   s:1+((Math.random()*2)|0),life:0.5+Math.random()*0.35,t:0,
+   c:(Math.random()<0.6?bodyCol:DEBRIS_DARK[(Math.random()*DEBRIS_DARK.length)|0])});
+ }
+ crashFx.push({pos:worldPos,x:xRoad,side:side,flash:1,parts:parts});
+ if(crashFx.length>6)crashFx.shift();   /* cap: several simultaneous crashes is plenty */
+}
+function stepCrashFx(dt){
+ for(let i=crashFx.length-1;i>=0;i--){
+  const c=crashFx[i];
+  c.flash=Math.max(0,c.flash-dt*3.2);
+  let alive=false;
+  for(const p of c.parts){
+   p.t+=dt;
+   if(p.t<p.life){p.ox+=p.vx*dt;p.oy+=p.vy*dt;p.vy+=p.g*dt;alive=true;}
+  }
+  if(!alive)crashFx.splice(i,1);
+ }
+}
+function drawCrashFx(){
+ if(!crashFx.length)return;
+ for(const c of crashFx){
+  const pr=projAnchor(c.pos);
+  if(!pr)continue;
+  const k=Math.max(0.4,Math.min(2.2,pr.cw/80));   /* scale the burst with distance */
+  const sx=pr.x+c.x*pr.cw;                          /* the post's screen x */
+  const sy=pr.y-0.22*pr.cw;                         /* just above the ground: car-body height */
+  if(c.flash>0){                                    /* impact flash at the contact point */
+   const r=Math.max(3,Math.round(7*k*(0.5+c.flash*0.9)));
+   ctx.globalAlpha=Math.min(1,c.flash*1.2);
+   ctx.fillStyle='#fff3c8';
+   ctx.fillRect((sx-r/2)|0,(sy-r/2)|0,r,r);
+   ctx.globalAlpha=1;
+  }
+  for(const p of c.parts){
+   if(p.t>=p.life)continue;
+   ctx.globalAlpha=Math.max(0,1-p.t/p.life);
+   ctx.fillStyle=p.c;
+   const sz=Math.max(1,Math.round(p.s*k));
+   ctx.fillRect((sx+p.ox*k)|0,(sy+p.oy*k)|0,sz,sz);
+  }
+  ctx.globalAlpha=1;
+ }
+}
+/* ---------- WATER PUDDLES: 8-11 random puddles on the tarmac, rebuilt every race.
+   Light-blue decals painted straight onto the road rows (same exact 1/z math as
+   the cars). Driving onto one sprays a light-blue/white splash; at SPEED the car
+   hydroplanes: ~1s of swerving, mushy steering, a little speed lost — hero and
+   rivals alike. Rivals try to dodge (skill decides how well), and when a car
+   blocks the escape lane some of them just cut across the grass. */
+let PUDDLES=[];   /* {p,x,hw,len} — p: track position, x: centre (road units, ±1 = kerb),
+                     hw: half-width (road units), len: length (track units) */
+function buildPuddles(){
+ PUDDLES.length=0;
+ const N=8+((Math.random()*4)|0);            /* at least 8, up to 11 */
+ let guard=0;
+ while(PUDDLES.length<N&&guard++<500){
+  const p=2600+Math.random()*(trackLen-5200);   /* clear of the start line + grid straight */
+  let ok=true;
+  for(const q of PUDDLES){
+   const dp=Math.abs(q.p-p);
+   if(Math.min(dp,trackLen-dp)<4200){ok=false;break;}    /* spread them round the loop */
+  }
+  if(!ok)continue;
+  PUDDLES.push({p:p,x:(Math.random()*2-1)*0.72,hw:0.26+Math.random()*0.22,len:340+Math.random()*520});
+ }
+}
+/* paint the water onto the tarmac — one soft light-blue ellipse per puddle,
+   anchored to the road rows exactly like the cars, with the crest clip so it
+   never floats over a hill */
+function drawPuddles(baseIdx){
+ for(const pu of PUDDLES){
+  const d=(((pu.p-pos)%trackLen)+trackLen)%trackLen;
+  if(d<=SEG_LEN||d>=DRAW_DIST*SEG_LEN)continue;
+  const s=segs[(baseIdx+((d/SEG_LEN)|0))%segs.length];
+  if(!s||s.clip===undefined)continue;
+  const f=(d%SEG_LEN)/SEG_LEN;
+  const sc=CAM_D/Math.max(d,20);
+  const cx=VW/2+sc*(s.ax+f*s.adx-playerX*ROAD_HALF)*VW/2;
+  const cy=HZ-sc*(s.p1[1]+(s.p2[1]-s.p1[1])*f-s.camY)*FOCAL_V;
+  const cw=sc*ROAD_HALF*VW/2;
+  const rx=Math.max(1.5,pu.hw*cw);
+  const x=cx+pu.x*cw;
+  if(x+rx<0||x-rx>VW)continue;
+  const d2=Math.min(d+pu.len,DRAW_DIST*SEG_LEN);
+  const f2=(d2%SEG_LEN)/SEG_LEN;
+  const sc2=CAM_D/Math.max(d2,20);
+  const cy2=HZ-sc2*(s.p1[1]+(s.p2[1]-s.p1[1])*f2-s.camY)*FOCAL_V;
+  const ry=Math.max(1,Math.abs(cy-cy2));
+  if(cy-ry>=s.clip)continue;                         /* whole puddle behind the crest */
+  const clipped=cy>s.clip;
+  if(clipped){ctx.save();ctx.beginPath();ctx.rect(0,0,VW,s.clip);ctx.clip();}
+  ctx.globalAlpha=0.50;
+  ctx.fillStyle='#7ecfff';                           /* light blue water */
+  ctx.beginPath();ctx.ellipse(x,cy,rx,ry,0,0,Math.PI*2);ctx.fill();
+  ctx.globalAlpha=0.55;
+  ctx.fillStyle='#d9f2ff';                           /* pale glint */
+  ctx.beginPath();ctx.ellipse(x-rx*0.18,Math.max(0,cy-ry*0.2),rx*0.55,Math.max(0.75,ry*0.5),0,0,Math.PI*2);ctx.fill();
+  ctx.globalAlpha=1;
+  if(clipped)ctx.restore();
+ }
+}
+/* ---------- splash particles: light blue + white droplets kicked off the
+   tarmac, world-anchored like the crash sparks so the burst stays glued to
+   the water as the camera drives on */
+const SPLASH_COLS=['#ffffff','#eaf9ff','#cfeeff','#a8e2ff','#8fd6ff'];
+let splashFx=[];                  /* active bursts: {pos, x, parts:[...]} */
+const SPLASH_CD=1.6;              /* per (car, puddle) seconds: one spray per pass */
+let splashCd={};
+function spawnSplashFx(worldPos,xRoad,strength){
+ const parts=[];
+ const n=12+((strength*16)|0);    /* the faster the hit, the bigger the spray */
+ for(let i=0;i<n;i++){
+  const sp=30+Math.random()*70*(0.5+strength);
+  parts.push({ox:0,oy:0,vx:(Math.random()*2-1)*sp*0.9,vy:-(16+Math.random()*sp),
+   g:170+Math.random()*90,s:1+((Math.random()*2)|0),life:0.30+Math.random()*0.42,t:0,
+   c:SPLASH_COLS[(Math.random()*SPLASH_COLS.length)|0]});
+ }
+ splashFx.push({pos:worldPos,x:xRoad,parts:parts});
+ if(splashFx.length>8)splashFx.shift();   /* cap: a few cars splashing at once is plenty */
+}
+function stepSplashFx(dt){
+ for(let i=splashFx.length-1;i>=0;i--){
+  const c=splashFx[i];let alive=false;
+  for(const p of c.parts){
+   p.t+=dt;
+   if(p.t<p.life){p.ox+=p.vx*dt;p.oy+=p.vy*dt;p.vy+=p.g*dt;alive=true;}
+  }
+  if(!alive)splashFx.splice(i,1);
+ }
+}
+function drawSplashFx(){
+ if(!splashFx.length)return;
+ for(const c of splashFx){
+  const pr=projAnchor(c.pos);
+  if(!pr)continue;
+  const k=Math.max(0.4,Math.min(2.2,pr.cw/80));   /* scale the burst with distance */
+  const sx=pr.x+c.x*pr.cw;                          /* the splash point on the road */
+  const sy=pr.y-0.10*pr.cw;                         /* low: water kicked up off the tarmac */
+  for(const p of c.parts){
+   if(p.t>=p.life)continue;
+   ctx.globalAlpha=Math.max(0,1-p.t/p.life);
+   ctx.fillStyle=p.c;
+   const sz=Math.max(1,Math.round(p.s*k));
+   ctx.fillRect((sx+p.ox*k)|0,(sy+p.oy*k)|0,sz,sz);
+  }
+ }
+ ctx.globalAlpha=1;
+}
+function render(){
+ if(threeOK){
+  ctx.clearRect(0,0,VW,VH);    /* transparent pixel canvas -> smooth 3D backdrop shows through */
+  try{renderRoad();}catch(e){}   /* one stage failing must never kill the others */
+  try{drawPlayerCar();}catch(e){}
+  try{drawRubber();}catch(e){}
+  updateThree();               /* self-heals to the 8-bit backdrop if WebGL dies */
+ }else{
+  ctx.drawImage(skyCv,0,0);
+  drawClouds();
+  drawRidge(farCv,bgFar);
+  drawRidge(nearCv,bgNear);
+  try{renderRoad();}catch(e){}
+  try{drawPlayerCar();}catch(e){}
+ }
+ try{drawRubber();}catch(e){}
+ try{drawCrashFx();}catch(e){}
+ try{drawSplashFx();}catch(e){}
+ try{if(BLIMP.active)drawBlimp();}catch(e){}   /* the ad blimp flies across the sky, above everything */
+}
+/* ---------- game state ---------- */
+let state='title',paused=false;
+let pos=0,speed=0,playerX=0,lapDone=0,lapTime=0,raceTime=0;
+let topSpeed=0,bestLap=0,bestTotal=0,finalPos=4,newBest=false,firstLine=false;
+let attractT=0;
+let playerHitT=0;                     /* timer: the PLAYER is bracing from a bump (extra braking) */
+let playerStopT=0;                    /* timer: the PLAYER rear-ended a car — full stop for a full second */
+let hydroT=0,hydroDir=1,hydroPh=0;    /* HYDROPLANE: the PLAYER crossed a puddle at speed — ~1s of swerve */
+const ais=[];
+/* ---------- car-to-car bumps: bump -> brake, and rivals dodge with varying skill ----------
+   Sizes in world units: a car is ~375u wide (CAR_WORLD) so its half-width in road
+   units is ~0.19; length ~560u. Two cars bump when they overlap by ~half a car
+   length AND their lateral centres are within ~0.5 road units (≈1.25 car widths). */
+const CAR_LEN=560;                    /* fore-aft overlap that counts as contact */
+const BUMP_X=0.50;                    /* lateral centres this close (road units) = touching */
+const BUMP_CD=0.9;                    /* seconds of immunity after one bump (no re-trigger spam) */
+let bumpCd={};                        /* immunity is per car-PAIR (0=hero, 1..5=rivals) — NEVER per-car:
+                                        a car that just bumped one opponent must NOT gain immunity
+                                        against the other opponent (that was letting cars drive
+                                        straight through each other) */
+function pairKey(i,j){return i<j?i*4+j:j*4+i;}
+function resetAis(){
+ ais.length=0;
+ playerHitT=0;playerStopT=0;bumpCd={};
+ hydroT=0;hydroDir=1;hydroPh=0;                        /* fresh race: no leftover hydroplane */
+ if(typeof rubber!=='undefined')rubber.length=0;   /* fresh race: no leftover rubber bits */
+ if(typeof crashFx!=='undefined')crashFx.length=0;  /* fresh race: no leftover crash bursts */
+ if(typeof splashFx!=='undefined')splashFx.length=0;/* fresh race: no leftover splash droplets */
+ if(typeof splashCd!=='undefined')splashCd={};      /* fresh race: clear the splash cooldown */
+ bbHitCd={};                                          /* fresh race: clear the post-crash immunity */
+ const cols=['#3c6ce8','#3aa844','#f5a623','#ffd400','#c0c4cc'];   /* BLUE, GREEN, ORANGE, YELLOW, SILVER */
+ /* Competitive field: every rival draws its OWN random top speed in
+    [1.10, 1.25] of the player's top speed — the pack is nominally faster
+    and bleeds speed in the corners (that's where YOU out-drive them).
+    They also split FIVE shuffled ROLES each race: two hold the lead
+    AHEAD (visible up the track), one fights at your gearbox, two shadows
+    behind - you usually finish mid-pack, can take P1 when you're on top, can
+    drop to P5/P6, but you never race an empty road. */
+ const spd=[0,0,0,0,0].map(()=>1.10+Math.random()*0.15);
+ /* roles (shuffled): hold the lead ahead / fight at your gearbox / shadow behind */
+ const ahead=[14000,7000,1500,-4000,-9000];
+ for(let i=4;i>0;i--){const j=(Math.random()*(i+1))|0;const t=ahead[i];ahead[i]=ahead[j];ahead[j]=t;}
+ const jit=()=>(Math.random()*2-1)*1500;   /* slight per-race scatter */
+ /* Grid: staggered diagonally, 800u apart (a full car length + margin) so the
+    pack never starts inside each other — with the bump/brake system a tight
+    same-row pack would side-swipe on the launch. Sides: three on the RIGHT
+    (600, 2200, 3800) and two on the LEFT (1400, 3000) - the hero starts LAST
+    ON THE LEFT (trackLen-4600), all of them before the line,
+    a clear lane on the launch, exactly like the arcade's diagonal grid. */
+ ais.push({col:cols[0],pos:trackLen-600,lap:0,x: 0.6,base:spd[0],phase:0.7,warm:0,v:0,cm:1,pace:0,ahead:ahead[0]+jit()});
+ ais.push({col:cols[1],pos:trackLen-1400,lap:0,x:-0.6,base:spd[1],phase:2.8,warm:0,v:0,cm:1,pace:0,ahead:ahead[1]+jit()});
+ ais.push({col:cols[2],pos:trackLen-2200,lap:0,x: 0.6,base:spd[2],phase:4.9,warm:0,v:0,cm:1,pace:0,ahead:ahead[2]+jit()});
+ ais.push({col:cols[3],pos:trackLen-3000,lap:0,x:-0.6,base:spd[3],phase:7.0,warm:0,v:0,cm:1,pace:0,ahead:ahead[3]+jit()});
+ ais.push({col:cols[4],pos:trackLen-3800,lap:0,x: 0.6,base:spd[4],phase:9.1,warm:0,v:0,cm:1,pace:0,ahead:ahead[4]+jit()});
+ /* each rival keeps the LANE it started in (like a real pack: staggered, not
+    stacked) — its wave line and dodges are drawn AROUND that lane, so the
+    packmates run side by side instead of crossing each other's paths */
+ for(let i=0;i<ais.length;i++)ais[i].lane=ais[i].x;
+ for(const a of ais){
+  a.skill=0.30+0.70*Math.random();   /* AVOIDANCE SKILL: how early and how fast this rival
+                                         notices a car ahead of it and swerves around it —
+                                         each car has a different brain, so the pack is not
+                                         a copy-paste herd (sharp drivers dodge clean, sloppy
+                                         ones bump and pay for it) */
+  a.dodge=0;a.dodgeT=0;a.dodgeUrg=1; /* current / target avoidance offset (road units) + urgency */
+  a.swv=1;                           /* swerve speed factor: steering around a car has a price */
+  a.hitT=0;                          /* seconds left of post-bump braking */
+  a.stopT=0;                         /* seconds left of the TAILGATE full stop (rearended someone) */
+  a.road=1;                          /* off-road speed factor: grass costs speed (1.0 on the tarmac) */
+  a.escX=0;a.escT=0;                 /* grass escape: lateral target + seconds left of it */
+  a.hydroT=0;a.hydroDir=1;a.hydroPh=0;/* HYDROPLANE: crossed a puddle at speed — ~1s of swerve */
+ }
+}
+function loadBest(){try{const d=JSON.parse(localStorage.getItem('pp8bit')||'{}');
+ bestLap=d.bestLap||0;bestTotal=d.bestTotal||0;}catch(e){}}
+function saveBest(){try{localStorage.setItem('pp8bit',JSON.stringify({bestLap,bestTotal}));}catch(e){}}
+function handleBumps(dt){
+ if(state!=='race')return;                     /* racing only: the attract drive-by keeps its choreography */
+ for(const k in bumpCd){const c=bumpCd[k]-dt;if(c<=0)delete bumpCd[k];else bumpCd[k]=c;}
+ const contact=(frontTot)=>{                  /* the REAR car is pulled back to nose-to-tail contact
+                                                 with the front car — a bump means touching, NEVER
+                                                 overlapping (this is what stops the hero/AI from
+                                                 visually driving over the car in front of it) */
+  const nt=frontTot-CAR_LEN;
+  return[nt>=0?Math.floor(nt/trackLen):0,((nt%trackLen)+trackLen)%trackLen];
+ };
+ /* PLAYER vs every rival */
+ const pTot=lapDone*trackLen+pos;
+ for(let i=0;i<ais.length;i++){
+  const a=ais[i];
+  const aT=a.lap*trackLen+a.pos;
+  let dz=Math.abs(aT-pTot)%trackLen;           /* circular distance (mod handles cars >1 lap apart) */
+  if(dz>trackLen/2)dz=trackLen-dz;
+  const dx=Math.abs(a.x-playerX);
+  if(dz>=CAR_LEN||dx>=BUMP_X)continue;
+  const k=pairKey(0,i+1);
+  if(bumpCd[k]>0)continue;                     /* immunity is per PAIR: this AI bumping someone else a
+                                                 moment ago never blocks YOUR collision with it —
+                                                 that was letting cars drive straight through each other */
+  bumpCd[k]=BUMP_CD;
+  if(dx<0.30){                                 /* TAILGATE: nearly in line — the car BEHIND hit */
+   if(aT<pTot){const sp=contact(pTot);a.stopT=1.0;a.lap=sp[0];a.pos=sp[1];}   /* AI rearended the hero: it fully stops + is pulled back to contact */
+   else{const sp=contact(aT);playerStopT=1.0;playerHitT=1.0;lapDone=sp[0];pos=sp[1];}
+  }else{                                       /* SIDE SWIPE: bodies brushed — BOTH brake */
+   a.hitT=0.45;playerHitT=0.45;
+   const s=Math.sign(a.x-playerX)||1;          /* and each is nudged off the other's paint */
+   a.x=clamp(a.x+s*0.15,-0.85,0.85);
+   playerX=clamp(playerX-s*0.15,-2.1,2.1);
+  }
+  crunchSound(dx<0.30?1:0);                    /* metal + plastic crunch — harder on a tailgate */
+ }
+ /* RIVALS vs each other */
+ for(let i=0;i<ais.length;i++)for(let j=i+1;j<ais.length;j++){
+  const A=ais[i],B=ais[j];
+  const aT=A.lap*trackLen+A.pos,bT=B.lap*trackLen+B.pos;
+  let dz=Math.abs(aT-bT)%trackLen;
+  if(dz>trackLen/2)dz=trackLen-dz;
+  const dx=Math.abs(A.x-B.x);
+  if(dz>=CAR_LEN||dx>=BUMP_X)continue;
+  const k=pairKey(i+1,j+1);
+  if(bumpCd[k]>0)continue;                     /* per-pair immunity, same rule as above */
+  bumpCd[k]=BUMP_CD;
+  const rear=aT<bT?A:B,frontT=aT<bT?bT:aT;
+  if(dx<0.30){const sp=contact(frontT);rear.stopT=1.0;rear.lap=sp[0];rear.pos=sp[1];}  /* tailgate: the one who hit stops 1s + back to contact */
+  else{A.hitT=B.hitT=0.45;                     /* side swipe: both brake + separate */
+   const s=Math.sign(A.x-B.x)||1;
+   A.x=clamp(A.x+s*0.15,-0.85,0.85);B.x=clamp(B.x-s*0.15,-0.85,0.85);}
+  crunchSound(dx<0.30?1:0);                    /* metal + plastic crunch */
+ }
+}
+/* ---------- billboard-post crashes: any car (hero or rival) that rams a sign's
+   grey post is stopped dead for CRASH_STOP seconds while sparks + pieces fly off
+   and a big crash sound plays. The car is pushed back off the post so it can pull
+   away again after the stop. A car that crashes into a post is IMMUNE to that
+   SAME post until it COMPLETES the lap it crashed on, so it can't be stopped dead
+   twice in a row by the same sign — the next time it's level with that post it
+   just drives past it. This applies to EVERY car on the track — the player and
+   all the rivals, exactly the same way. */
+function handlePostCrashes(dt){
+ if(state!=='race')return;                      /* racing only (the attract drive-by keeps its choreography) */
+ const cars=[{id:0,tot:lapDone*trackLen+pos,x:playerX,col:PLAYER_COL,isP:true,lap:lapDone}];
+ for(let i=0;i<ais.length;i++)cars.push({id:i+1,tot:ais[i].lap*trackLen+ais[i].pos,x:ais[i].x,col:ais[i].col,isP:false,ai:ais[i],lap:ais[i].lap});
+ for(let bi=0;bi<BB_LIST.length;bi++){
+  const bb=BB_LIST[bi];
+  for(const car of cars){
+   let dz=(car.tot-bb.p)%trackLen;dz=((dz%trackLen)+trackLen)%trackLen;
+   if(dz>trackLen/2)dz=trackLen-dz;
+   if(dz>CAR_LEN*0.8)continue;                  /* not level with the post */
+   if(car.x*bb.s<POST_HIT_X)continue;           /* car isn't out on the sign's side of the road */
+   const key=car.id*32+bi;
+   if(bbHitCd[key]!==undefined&&car.lap<=bbHitCd[key])continue;  /* immune to this post until the
+                                                                    car completes the lap it crashed on */
+   bbHitCd[key]=car.lap;                        /* stamp the lap: this post is "spent" for this car
+                                                   until it crosses the line again (lap counter advances) */
+   spawnCrashFx(bb.p,bb.s*POST_HIT_X,bb.s,car.col);
+   crashSound();
+   let back=car.tot-CAR_LEN;if(back<0)back=0;   /* push the car back off the post so it can pull away */
+   if(car.isP){
+    lapDone=Math.floor(back/trackLen);pos=back%trackLen;
+    playerStopT=CRASH_STOP;speed=0;
+    playerX=clamp(playerX-bb.s*0.35,-1.4,1.4);  /* nudge the hero back toward the road */
+   }else{
+    car.ai.lap=Math.floor(back/trackLen);car.ai.pos=back%trackLen;
+    car.ai.stopT=CRASH_STOP;car.ai.v=0;car.ai.hitT=0;
+    car.ai.x=clamp(car.ai.x-bb.s*0.45,-0.85,0.85);   /* pull the rival back onto the tarmac */
+   }
+  }
+ }
+}
+/* ---------- puddle crossings: any car (hero or rival) that drives onto a
+   puddle sprays a light-blue/white splash. At SPEED it hydroplanes too: ~1s of
+   swerving + mushy steering + a bit of speed lost (rivals pay it as a swerve +
+   a 14% speed factor). Slow drips just splash. One spray per (car, puddle)
+   pass, then a short immunity so the spray doesn't repeat every frame. */
+function handlePuddles(dt){
+ if(state!=='race')return;                     /* racing only (the attract drive-by keeps its choreography) */
+ for(const k in splashCd){const c=splashCd[k]-dt;if(c<=0)delete splashCd[k];else splashCd[k]=c;}
+ const cars=[{id:0,tot:lapDone*trackLen+pos,x:playerX,v:speed}];
+ for(let i=0;i<ais.length;i++)cars.push({id:i+1,tot:ais[i].lap*trackLen+ais[i].pos,x:ais[i].x,v:ais[i].v,ai:ais[i]});
+ for(let pi=0;pi<PUDDLES.length;pi++){
+  const pu=PUDDLES[pi];
+  for(const car of cars){
+   let d=(((pu.p-car.tot)%trackLen)+trackLen)%trackLen;
+   if(d>trackLen/2)d=trackLen-d;
+   if(d>pu.len/2+CAR_LEN*0.5)continue;         /* not level with the puddle */
+   if(Math.abs(car.x-pu.x)>pu.hw+0.20)continue;/* not out on the puddle's line */
+   const key=car.id*64+pi;
+   if(splashCd[key]>0)continue;                /* one spray per pass */
+   splashCd[key]=SPLASH_CD;
+   spawnSplashFx(pu.p,car.x,clamp(car.v/MAX_SPEED,0.2,1));
+   if(car.v>MAX_SPEED*0.45){                   /* FAST on the water = hydroplane */
+    if(car.ai){
+     car.ai.hydroT=0.9;car.ai.hydroDir=Math.random()<0.5?-1:1;car.ai.hydroPh=Math.random()*6.28;
+     car.ai.v*=0.93;
+    }else{
+     hydroT=1.0;hydroDir=Math.random()<0.5?-1:1;hydroPh=Math.random()*6.28;
+     speed*=0.90;
+    }
+   }
+  }
+ }
+}
+function stepAis(dt){
+ const pDist=lapDone*trackLen+pos;   /* player's total distance this race */
+ const GAIN=0.22;                   /* how hard each rival defends its role gap */
+ const FLOOR=state==='race'?0.60:0; /* self-drive floor: in a race the rivals keep rolling
+                                        at 60% of their OWN top speed even if YOU are
+                                        standing still — they never freeze waiting for you
+                                        (and you can always catch them back: their floor is
+                                        below your top speed). No floor on the title screen:
+                                        the pack must stay parked around the attract cam. */
+ for(const a of ais){
+  /* grid launch: rivals pull away slowly for the first ~5s, so the hero
+     gets a fair run off the line instead of being boxed in at the lights */
+  a.warm=Math.min(1,a.warm+dt/5);
+  /* pace-following: rivals chase a SLOWLY UPDATING average of YOUR pace —
+     the low-pass keeps them from twitching with every blip of your throttle,
+     so the fight stays fair without looking nervous */
+  a.pace+=(speed-a.pace)*Math.min(1,dt);
+  /* AVOIDANCE SCAN (races only): no driver wants to end up in someone's rear
+     end. Each rival looks for a car on its line AHEAD of it — the player or a
+     packmate. Skill decides how far it can see: a sharp driver spots trouble
+     ~9000u out, a sloppy one only ~2800u out — and sees its speed too, so it
+     knows whether it is the one closing in */
+  let threatX=null,threatD=1e9,threatV=0;
+  if(state==='race'){
+   const myT=a.lap*trackLen+a.pos,LOOK=2800+6200*a.skill;
+   for(const o of ais){
+    if(o===a)continue;
+    let d=(o.lap*trackLen+o.pos)-myT;
+    d=((d%trackLen)+trackLen)%trackLen; if(d>trackLen/2)d-=trackLen;
+    if(d>150&&d<LOOK&&Math.abs(o.x-a.x)<0.55&&d<threatD){threatD=d;threatX=o.x;threatV=o.v;}
+   }
+   let pd=pDist-myT;
+   pd=((pd%trackLen)+trackLen)%trackLen; if(pd>trackLen/2)pd-=trackLen;
+   if(pd>150&&pd<LOOK&&Math.abs(playerX-a.x)<0.55&&pd<threatD){threatD=pd;threatX=playerX;threatV=speed;}
+  }
+  /* DIRECT GAP CONTROL toward this rival's role gap (a.ahead): the leader
+     hangs its target AHEAD of you — inside the 28k draw band, so you always
+     see it up the track. Pass it and it pushes (up to base·1.06) to take
+     the lead back; let it run too far and it eases off so you chase it.
+     The gearbox rival holds ~your line, the shadow rival rides behind —
+     you win by holding them off, and positions are always being traded. */
+  const gap=(a.lap*trackLen+a.pos)-pDist;              /* >0: this rival leads you */
+  /* DEFICIT PUSH: the further a rival trails you, the harder it pushes — up to
+     1.10 of its own top speed. A rival 25k behind is no longer "the shadow",
+     it's a lost driver: it stops pacing you and starts rejoining the race, so
+     the pack always comes back into the fight instead of fading out of view */
+  const deficit=Math.max(0,Math.min(30000,-gap));
+  const cap=MAX_SPEED*a.base*(1.06+0.04*deficit/10000);
+  const des0=Math.max(MAX_SPEED*a.base*FLOOR,Math.min(cap,a.pace+GAIN*(a.ahead-gap)));
+  let des=des0;
+  /* LIFT-OFF: closing in on a car ahead on your line? A real driver brakes
+     before the bad bump — sharp drivers lift earlier (they see further) and
+     harder; a sloppy driver half-lifts and prays. This is what keeps the pack
+     from turning into a bumper-car shuffle */
+  if(threatX!==null&&threatD<4500&&a.v>threatV){
+   const lift=Math.min(1,(4500-threatD)/4500)*(0.10+0.40*a.skill);
+   des=Math.min(des,des0*(1-lift));
+  }
+  /* PUDDLE AHEAD ON MY LINE: spray it or swing around it. Sharp drivers spot
+     it early and take a wide line; sloppy ones half-dodge (and usually spray
+     it anyway); and when another car blocks the escape lane, the less brave
+     ones just cut across the GRASS — a real trade (grass is slow), and that's
+     exactly how they end up clipping a billboard post. */
+  if(state==='race'){
+   const myT3=a.lap*trackLen+a.pos;
+   const LOOK3=2400+5200*a.skill;                 /* sharp drivers see the water earlier */
+   let pu=null,puD=1e9;
+   for(const q of PUDDLES){
+    let d=(((q.p-myT3)%trackLen)+trackLen)%trackLen;
+    if(d>trackLen/2)d-=trackLen;
+    if(d>250&&d<LOOK3&&Math.abs(q.x-a.x)<q.hw+0.30&&d<puD){puD=d;pu=q;}
+   }
+   if(pu){
+    const side=pu.x>=a.x?-1:1;                    /* escape the far side of the puddle */
+    const esc=clamp(pu.x+side*(pu.hw+0.45),-0.8,0.8);/* a clear tarmac line just off the water's edge */
+    let occ=false;                                /* is that lane blocked by another car? */
+    for(const o of ais){
+     if(o===a)continue;
+     let d=(o.lap*trackLen+o.pos)-myT3;
+     d=((d%trackLen)+trackLen)%trackLen; if(d>trackLen/2)d-=trackLen;
+     if(d>-900&&d<2600&&Math.abs(o.x-esc)<0.6){occ=true;break;}
+    }
+    {let d=pDist-myT3;d=((d%trackLen)+trackLen)%trackLen;if(d>trackLen/2)d-=trackLen;
+     if(d>-900&&d<2600&&Math.abs(playerX-esc)<0.6)occ=true;}   /* the hero counts too */
+    if(occ&&a.skill<0.85&&puD<6200&&a.escT<=0){
+     a.escX=(esc>0?1:-1)*(1.30+0.14*(1-a.skill));/* GRASS: outside the water AND the car */
+     a.escT=2.6;
+    }else if(puD<6200&&a.escT<=0&&(a.skill>=0.85||!occ)){
+     a.escX=esc;                                  /* TARMAC: a decisive clear line, held across the water */
+     a.escT=1.0;
+     const lift=Math.min(1,(5200-puD)/5200)*(0.10+0.30*(1-a.skill))*(occ?1.5:1);
+     if(lift>0)des=Math.min(des,des0*(1-lift));   /* braking for the water is a choice, not a law */
+    }
+   }
+  }
+  /* BUMP RECOVERY: a rival that just got clipped brakes hard for a moment
+     (capped well under top speed) — the existing 5000 u/s² brake limit makes
+     the deceleration smooth, never a snap */
+  if(a.hitT>0)des=Math.min(des,MAX_SPEED*a.base*0.60);
+  /* SMOOTH SPEED: the rival accelerates at ≤3000 u/s² and brakes at
+     ≤5000 u/s² — whatever the target does (gap flip, your lift-off, a
+     corner ahead), its speed can only change like a real car, never a snap */
+  const dv=des-a.v,lim=(dv>0?3000:5000)*dt;
+  a.v+=dv>lim?lim:(dv<-lim?-lim:dv);
+  /* TAILGATE STOP: this rival rearended another car — STATIONARY for a full
+     second, then it re-launches from a standstill at the 3000 u/s² accel */
+  if(a.stopT>0){a.v=0;a.stopT=Math.max(0,a.stopT-dt);}
+  /* CORNER PENALTY: rivals must lift in turns like the player — gentle
+     bends cost ~13%, the 2.8 kinks ~32%, the hairpin caps them at ~45%
+     of top speed — just above the player's 38% off-road cap, so a clean
+     line still wins. The penalty eases in/out (~0.15s) per segment
+     instead of snapping at each 200-unit boundary */
+  a.cm+=((1-0.55*Math.pow(Math.min(1,Math.abs(curveAt(a.pos))/4),1.5))-a.cm)*Math.min(1,dt*7);
+  /* STEER AROUND IT: dodge to the open side of the threat. Skill sets HOW EARLY
+     the plan forms; urgency sets HOW FAST the wheel turns once it is close —
+     a car about to clip you gets a full-steer panic from even a sloppy driver */
+  if(threatX!==null){
+   let tgt=a.x+(threatX>a.x?-0.6:0.6);          /* swerve AWAY from the car in front of you */
+   if(tgt>0.85)tgt=0.85;else if(tgt<-0.85)tgt=-0.85;   /* ...but stay on the tarmac */
+   const urg=threatD<2500?2.0:1.0;
+   a.dodgeT+=(tgt-a.dodgeT)*Math.min(1,dt*(0.8+5.2*a.skill)*urg);
+   a.dodgeUrg=urg;                              /* shared with the steering ease below */
+  }else a.dodgeT=0;                              /* road ahead clear: drift back to the racing line */
+  /* PACK SEPARATION: hold at least a car-and-a-half of lateral gap from the
+     nearest car directly ahead — once you find a free lane, KEEP it. Without
+     this the packmates oscillate across each other's lanes and side-swipe
+     every time they meet (the player is handled by YOU: no auto-lane-keeping) */
+  {
+   const myT2=a.lap*trackLen+a.pos;
+   let nearX=null,nearD=1e9;
+   for(const o of ais){
+    if(o===a)continue;
+    let d=(o.lap*trackLen+o.pos)-myT2;
+    d=((d%trackLen)+trackLen)%trackLen; if(d>trackLen/2)d-=trackLen;
+    if(d>100&&d<2000&&d<nearD){nearD=d;nearX=o.x;}
+   }
+   if(nearX!==null&&Math.abs(nearX-a.x)<0.75){
+    let sep=a.x+(nearX>a.x?-0.7:0.7);
+    if(sep>0.85)sep=0.85;else if(sep<-0.85)sep=-0.85;
+    a.dodgeT+=(sep-a.dodgeT)*Math.min(1,dt*6.0);   /* fast: beats a 2000 u/s closing rate */
+   }
+  }
+  a.dodge+=(a.dodgeT-a.dodge)*Math.min(1,dt*(1.0+3.0*a.skill)*(a.dodgeUrg||1));
+  /* SWERVE COST: turning at speed is not free — holding an avoidance line
+     bleeds ~16% of the rival's speed, so dodging is a real trade-off */
+  a.swv+=((1-Math.min(1,Math.abs(a.dodge)/0.6)*0.16)-a.swv)*Math.min(1,dt*5);
+  if(a.hitT>0)a.hitT=Math.max(0,a.hitT-dt);
+  if(a.hydroT>0)a.hydroT=Math.max(0,a.hydroT-dt);
+  /* OFF-ROAD PENALTY: the grass escape costs speed (like the player's off-road
+     cap) — cutting the grass is a real decision, not a free lane */
+  a.road+=((1-0.58*Math.pow(Math.min(1,Math.max(0,(Math.abs(a.x)-1.04)/0.46)),1.5))-a.road)*Math.min(1,dt*6);
+  const v=a.v*a.cm*a.warm*a.swv*a.road*(a.hydroT>0?0.86:1);  /* hydroplaning bleeds speed too */
+  a.pos+=v*dt;
+  while(a.pos>=trackLen){a.pos-=trackLen;a.lap++;}
+  /* racing line = home LANE + wave + avoidance offset (clamped to the tarmac) —
+     UNLESS a grass escape is in progress, then hold the outside line past the kerb */
+  let tx;
+  if(a.escT>0){
+   a.escT=Math.max(0,a.escT-dt);
+   tx=a.escX;                                            /* on the grass (|x| up to ~1.44) */
+  }else{
+   tx=(Math.sin(a.pos/900+a.phase)+0.4*Math.sin(a.pos/331+a.phase*2))*0.28+a.lane+a.dodge;
+   if(tx>0.85)tx=0.85;else if(tx<-0.85)tx=-0.85;
+   if(a.hydroT>0)tx+=a.hydroDir*Math.sin(a.hydroPh+(1.0-a.hydroT)*19)*0.45*a.hydroT; /* hydroplane swerve */
+  }
+  a.x+=(tx-a.x)*Math.min(1,dt*(2.0+2.0*a.skill)); /* sharper drivers steer quicker */
+ }
+ handleBumps(dt);
+}
+function stepAttract(dt){
+ attractT+=dt;
+ speed=3600;
+ pos+=speed*dt;if(pos>=trackLen)pos-=trackLen;
+ playerX=Math.sin(attractT*0.55)*0.45;
+ bounceT+=dt*8;
+ stepAis(dt);
+}
+function stepRace(dt){
+ const gas=gasHeld(),brake=brakeHeld();
+ let steer=steerHeld();
+ const hydro=hydroT>0;                   /* HYDROPLANE: just crossed a puddle at speed */
+ if(hydro){
+  hydroT=Math.max(0,hydroT-dt);
+  steer*=0.45;                           /* lost control: steering barely works anymore */
+ }
+ const sr=speed/MAX_SPEED;
+ let dv=0;
+ if(gas)dv+=ACCEL;
+ if(brake)dv-=BRAKE;
+ dv-=DRAG_K*speed*speed;
+ dv-=STEER_SCRUB*steer*steer*speed;   /* tyre scrub: harder lock + more speed = more speed lost */
+ if(hydro)dv-=900;                       /* on a film of water: bleed a bit of speed */
+ /* BUMP RECOVERY: the hero just got clipped — the driver brakes instinctively
+    for a moment (the rivals' side of the bump is handled in stepAis) */
+ if(playerHitT>0){playerHitT-=dt;dv-=6000;}
+ if(Math.abs(playerX)>1.08){                       /* off-road: cap speed to ~1/3 (like the arcade) */
+  if(speed>MAX_SPEED*0.38)dv-=(speed-MAX_SPEED*0.38)*4;
+ }
+ speed=clamp(speed+dv*dt,0,MAX_SPEED*0.85);   /* player's top speed = 85% of the rivals' reference (MAX_SPEED*1.10..1.25): the pack is quicker, so you keep up by out-driving the corners and by lifting/bumping, not by outrunning them on the straights */
+ /* TAILGATE STOP: the hero rearended a car — full stop for a full second;
+    no amount of gas peels out of it early */
+ if(playerStopT>0){playerStopT=Math.max(0,playerStopT-dt);speed=0;}
+ /* no reverse in this game: the car only moves left/right while it is moving
+    forward — steering input at standstill does nothing (like the arcade) */
+  /* CORNERING MODEL - the car must always feel like IT IS YOURS:
+     * A RIGHT corner pushes the car LEFT (outside of the turn); a LEFT corner
+     *   pushes it RIGHT - never into the apex, never along the curve.
+     * Steering INTO the corner always beats the drift with room to spare.
+     *   Old values (drift 0.32*c, steer 2.2) demanded a constant 30-60% lock
+     *   just to hold line; on a D-pad (all-or-nothing) the car ping-ponged
+     *   side to side no matter what the player did, reading as "the car
+     *   moves by itself". Now the player's steer is clearly in charge.
+     * An UNsteered car still slides off (that is the game): at top speed the
+     *   drift is ~0.3/s in a gentle corner, ~0.64/s in the hairpin. */
+
+  if(sr>0.004)playerX+=steer*2.6*sr*dt;
+  if(hydro)playerX+=hydroDir*Math.sin(hydroPh+(1.0-hydroT)*19)*1.25*hydroT*dt; /* swerving side-slip */
+  playerX-=curveAt(pos)*sr*sr*0.16*dt;             /* centrifugal drift */
+  playerX=clamp(playerX,-2.1,2.1);
+ pos+=speed*dt;
+ lapTime+=dt*1000;raceTime+=dt*1000;
+ topSpeed=Math.max(topSpeed,speed);
+ bounceT+=dt*(4+sr*14);
+ if(pos>=trackLen){
+  pos%=trackLen;
+  lapDone++;
+  if(lapDone-1>=LAPS){finishRace();return;}
+  if(!firstLine&&(!bestLap||lapTime<bestLap)){bestLap=lapTime;newBest=true;}else newBest=false;
+  lapTime=0;
+  if(!firstLine)jingle('lap');firstLine=false;
+ }
+ stepAis(dt);
+ handlePostCrashes(dt);   /* billboard-post crashes: hero + rivals — sparks, pieces, crash sound, 2s stop */
+ handlePuddles(dt);       /* puddle crossings: hero + rivals — splash, and a hydroplane swerve if fast */
+}
+function finishRace(){
+ state='finish';speed=0;
+ const pTot=lapDone*trackLen+pos;
+ finalPos=1+ais.filter(a=>a.lap*trackLen+a.pos>pTot).length;
+ if(!bestTotal||raceTime<bestTotal)bestTotal=raceTime;
+ saveBest();
+ jingle('finish');
+ showFinish();
+}
+function showFinish(){
+ finishOv.innerHTML=
+  '<div>'+
+  '<div class="t-sub">'+(finalPos===1?'YOU WIN!':'RACE COMPLETE')+'</div>'+
+  '<div class="big-res'+(finalPos===1?' gold':'')+'">'+ORD[finalPos-1]+'</div>'+
+  '<div class="stat">TIME '+fmt(raceTime)+'</div>'+
+  '<div class="stat">BEST LAP '+fmt(bestLap)+'</div>'+
+  (newBest?'<div class="press blink" style="margin-top:10px">NEW BEST LAP!</div>':'')+
+  '<div class="stat">TOP SPEED '+Math.round(topSpeed/MAX_SPEED*318)+' KMH</div>'+
+  '<div class="press blink" style="margin-top:22px">PRESS ENTER OR TAP</div>'+
+  '</div>';
+ show(finishOv);
+}
+function toTitle(){
+ state='title';paused=false;
+ hide(finishOv);hide(pauseOv);hide(countOv);hide(hud);
+ show(titleOv);
+}
+/* ---------- announcer (Web Speech synthesized voice, female — "prepare to qualify!") ----------
+   like the original arcade: the line plays AFTER the player starts the race and
+   BEFORE the 3-2-1 countdown lights. Falls back to a timed pause when no TTS is
+   available (unsupported browsers, headless tests) so the countdown always runs. */
+let spVoice=null;
+function pickFemaleVoice(){
+ try{
+  const vs=window.speechSynthesis&&window.speechSynthesis.getVoices?window.speechSynthesis.getVoices():null;
+  if(!vs||!vs.length)return null;
+  const en=vs.filter(v=>/^en/i.test(v.lang));
+  const list=en.length?en:vs;
+  const fem=/female|zira|samantha|victoria|karen|moira|tessa|susan|kathy|linda|jenny|aria|sonia|natasha|lucy|fiona|eva/i;
+  return list.find(v=>fem.test(v.name))||list[0];
+ }catch(e){return null;}
+}
+function speakLine(text,cb){
+ let fired=false;
+ const fin=()=>{if(!fired){fired=true;if(cb)cb();}};
+ const fallback=()=>setTimeout(fin,1600);
+ try{
+  const ss=window&&window.speechSynthesis;
+  if(!ss||muted){fallback();return;}    /* muted = no voice, but keep the beat */
+  ss.cancel();                           /* never stack two announcer lines */
+  const u=new SpeechSynthesisUtterance(text);
+  if(!spVoice)spVoice=pickFemaleVoice();
+  if(spVoice){u.voice=spVoice;u.lang=spVoice.lang;}
+  u.rate=1.02;u.pitch=1.12;              /* a touch bright — arcade announcer, not a robot */
+  u.onend=fin;u.onerror=fin;
+  setTimeout(fin,3200);                  /* safety: a stuck TTS must never stall the lights */
+  ss.speak(u);
+ }catch(e){fallback();}
+}
+if(typeof window!=='undefined'){
+ try{
+  if('speechSynthesis' in window){
+   if(window.speechSynthesis.addEventListener)window.speechSynthesis.addEventListener('voiceschanged',()=>{spVoice=null;});
+   else window.speechSynthesis.onvoiceschanged=()=>{spVoice=null;};
+  }
+ }catch(e){}
+}
+function startRace(){
+ buildTrack();resetAis();buildPuddles();   /* fresh random water layout for every race */
+ pos=trackLen-4600;speed=0;playerX=-0.6;lapDone=0;lapTime=0;raceTime=0;firstLine=true;  /* hero LAST ON THE LEFT of the grid, line + gantry ahead */
+ topSpeed=0;newBest=false;bounceT=0;paused=false;
+ state='count';
+ hide(titleOv);hide(finishOv);hide(pauseOv);show(hud);
+ launchBlimp();                                   /* blimp takes to the sky as the line is about to speak */
+ speakLine('Prepare to qualify!',runCountdown);   /* announcer FIRST, then the 3-2-1 lights */
+}
+/* the 3-2-1-GO countdown, kicked off once the announcer line has finished */
+function runCountdown(){
+ if(state!=='count')return;
+ let step=0;
+ const seq=()=>{
+  if(state!=='count')return;
+  if(step<3){
+   countEl.textContent=String(3-step);
+   countEl.classList.remove('pop');void countEl.offsetWidth;countEl.classList.add('pop');
+   beep(660,0.12);step++;setTimeout(seq,900);
+  }else{
+   countEl.textContent='GO!';
+   countEl.classList.remove('pop');void countEl.offsetWidth;countEl.classList.add('pop');
+   beep(1320,0.35);
+   setTimeout(()=>{hide(countOv);state='race';},700);
+  }
+ };
+ show(countOv);
+ seq();
+}
+function togglePause(){
+ if(state!=='race')return;
+ paused=!paused;
+ pauseOv.classList.toggle('hidden',!paused);
+}
+/* ---------- input: keyboard ---------- */
+const keys={};
+let joySteer=0,joyGas=false,joyBrake=false,joyPID=null;
+let gpSteer=0,gpGas=false,gpBrake=false;   /* gamepad — refreshed by pollGamepad() every frame */
+function gasHeld(){return !!(keys['arrowup']||keys['w']||joyGas||gpGas);}
+function brakeHeld(){return !!(keys['arrowdown']||keys['s']||joyBrake||gpBrake);}
+function steerHeld(){
+ /* keyboard + virtual stick + gamepad all coexist: each source asserts
+    freely, the final clamp keeps the combined value within ±1 so no
+    source can be silently cancelled by another */
+ return clamp(((keys['arrowright']||keys['d'])?1:0)-((keys['arrowleft']||keys['a'])?1:0)+joySteer+gpSteer,-1,1);
+}
+function onConfirm(){
+ initAudio();
+ if(state==='title'){hide(titleOv);startRace();}
+ else if(state==='finish'){hide(finishOv);toTitle();}
+}
+window.addEventListener('keydown',e=>{
+ const k=e.key;
+ if(k===' '||k==='Enter'||k.indexOf('Arrow')===0)e.preventDefault();
+ keys[k.toLowerCase()]=true;
+ initAudio();
+ if(k==='Enter'||k===' ')onConfirm();
+ const lk=k.toLowerCase();
+ if(lk==='p')togglePause();
+ if(lk==='m')toggleMute();
+});
+window.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
+/* ---------- input: gamepad (stick / D-pad steer · A or RT gas · B or LT brake
+   · Start = confirm/pause (edge-triggered) · Back = mute) ---------- */
+let gpPrev={confirm:false,mute:false};
+function pollGamepad(){
+ try{
+  const pads=navigator.getGamepads?navigator.getGamepads():null;
+  let gp=null;
+ if(pads){for(const g of pads){if(g&&g.connected){gp=g;break;}}}
+ if(!gp){gpSteer=0;gpGas=false;gpBrake=false;gpPrev={confirm:false,mute:false};gpStat(false);return;}
+ initAudio();
+ gpStat(true);
+ const dz=0.22;
+ /* accept BOTH .pressed and .value>0.5 — some pads/driver stacks only
+    report value (triggers especially), and the spec guarantees value>0 */
+ const b=i=>{const bt=gp.buttons[i];return !!(bt&&(bt.pressed||(bt.value||0)>0.5));};
+ let s=gp.axes[0]||0;
+ if(Math.abs(s)<dz)s=0;
+ const ah=gp.axes[3]||0;   /* standard mapping puts the horizontal D-pad on axis 3 */
+ if(Math.abs(ah)>0.5)s+=ah>0?1:-1;
+ if(b(14))s-=1;    /* D-pad left  */
+ if(b(15))s+=1;    /* D-pad right */
+ gpSteer=clamp(s,-1,1);
+ gpGas=b(0)||b(7);     /* A / right trigger */
+ gpBrake=b(1)||b(6);   /* B / left trigger  */
+ if(b(9)&&!gpPrev.confirm){           /* Start: start race / end result / pause */
+  if(state==='title')onConfirm();
+  else if(state==='finish'){hide(finishOv);toTitle();}
+  else togglePause();
+ }
+  if(b(8)&&!gpPrev.mute)toggleMute();  /* Back = mute */
+  gpPrev={confirm:b(9),mute:b(8)};
+ }catch(e){   /* a Gamepad-API error (e.g. Safari user-activation) must never kill the frame loop */
+  gpSteer=0;gpGas=false;gpBrake=false;
+ }
+}
+/* title-screen hint so you can tell whether your pad is even being seen */
+const gpStatEl=$('gpStat');
+function gpStat(on){
+ if(!gpStatEl)return;
+ const txt=on?'GAMEPAD: CONNECTED \u2713':'GAMEPAD: NONE DETECTED';
+ if(gpStatEl._t!==txt){gpStatEl._t=txt;gpStatEl.textContent=txt;gpStatEl.classList.toggle('on',!!on);}
+}
+window.addEventListener('gamepaddisconnected',()=>{gpSteer=0;gpGas=false;gpBrake=false;});
+/* ---------- input: virtual joystick (steer, Donkey-Kong style stick) ---------- */
+function joyReset(){
+ joyPID=null;
+ joySteer=0;
+ joyBase.classList.remove('active');
+ joyKnob.style.transform='translate(0px,0px)';
+ joyStickEl.style.transform='rotate(0deg) scaleY(0)';
+}
+joyBase.addEventListener('pointerdown',e=>{
+ e.preventDefault();
+ joyPID=e.pointerId;
+ try{joyBase.setPointerCapture(joyPID);}catch(err){}
+ joyBase.classList.add('active');
+ joyMove(e);
+ initAudio();
+});
+joyBase.addEventListener('pointermove',e=>{if(e.pointerId===joyPID)joyMove(e);});
+function joyEnd(e){if(e.pointerId!==joyPID)return;joyReset();}
+joyBase.addEventListener('pointerup',joyEnd);
+joyBase.addEventListener('pointercancel',joyEnd);
+joyBase.addEventListener('lostpointercapture',joyEnd);
+function joyMove(e){
+ const r=joyBase.getBoundingClientRect(),kr=joyKnob.getBoundingClientRect();
+ const cx=r.left+r.width/2,cy=r.top+r.height/2;
+ const max=Math.max(4,r.width/2-kr.width/2);
+ let dx=e.clientX-cx,dy=e.clientY-cy,dist=Math.hypot(dx,dy);
+ if(dist>max){const q=max/dist;dx*=q;dy*=q;dist=max;}
+ joyKnob.style.transform='translate('+dx+'px,'+dy+'px)';
+ /* the metal pole points from the base center toward the knob, stretching with it */
+ const ang=dist>0?Math.atan2(dy,dx)*180/Math.PI+90:0;
+ joyStickEl.style.transform='rotate('+ang+'deg) scaleY('+(dist/max)+')';
+ /* analog steering from the stick's x-axis, with a center deadzone */
+ let s=dx/max;const dz=0.16;
+ if(Math.abs(s)<dz)s=0;else s=(s-Math.sign(s)*dz)/(1-dz);
+ joySteer=clamp(s,-1,1);
+}
+/* keyboard mirror: the stick tilts when the arrow keys steer (like donkeykong.html) */
+function mirrorStick(){
+ /* mirror keyboard AND gamepad steering onto the stick (skipped while the
+    player's finger is on the stick — the stick is the source then) */
+ const s=joyPID===null?steerHeld():0;
+ if(s!==0){
+  joyBase.classList.add('active');
+  const r=joyBase.getBoundingClientRect(),kr=joyKnob.getBoundingClientRect();
+  const max=Math.max(4,r.width/2-kr.width/2);
+  joyKnob.style.transform='translate('+(s*max*0.75)+'px,0px)';
+  joyStickEl.style.transform='rotate('+(s>0?90:270)+'deg) scaleY(0.75)';
+ }else if(joyPID===null){
+  joyBase.classList.remove('active');
+  joyKnob.style.transform='translate(0px,0px)';
+  joyStickEl.style.transform='rotate(0deg) scaleY(0)';
+ }
+ /* A/B pads light up from ANY source: touch, keyboard (W/S · arrows) or gamepad */
+ gasBtn.classList.toggle('active',gasHeld());
+ brakeBtn.classList.toggle('active',brakeHeld());
+}
+/* ---------- input: A/B pad buttons (gas/brake) ---------- */
+function holdable(el,set){
+ el.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  try{el.setPointerCapture(e.pointerId);}catch(err){}
+  set(true);el.classList.add('active');initAudio();
+ });
+ const up=()=>{set(false);el.classList.remove('active');};
+ el.addEventListener('pointerup',up);
+ el.addEventListener('pointercancel',up);
+}
+holdable(gasBtn,v=>joyGas=v);
+holdable(brakeBtn,v=>joyBrake=v);
+/* ---------- misc buttons & flow ---------- */
+function toggleMute(){
+ muted=!muted;
+ muteBtn.textContent=muted?'\u2715':'\u266A';
+ if(engG)engG.gain.setTargetAtTime(0,AC.currentTime,0.05);
+ if(scrG)scrG.gain.setTargetAtTime(0,AC.currentTime,0.05);
+}
+muteBtn.addEventListener('pointerdown',e=>{e.preventDefault();initAudio();toggleMute();});
+titleOv.addEventListener('pointerdown',()=>{if(state==='title')onConfirm();});
+finishOv.addEventListener('pointerdown',()=>{if(state==='finish'){hide(finishOv);toTitle();}});
+pauseOv.addEventListener('pointerdown',()=>{if(paused)togglePause();});
+document.addEventListener('visibilitychange',()=>{
+ if(document.hidden&&state==='race'&&!paused)togglePause();
+});
+/* ---------- HUD ---------- */
+function updateHud(){
+ const kmh=Math.round(speed/MAX_SPEED*318);
+ if(speedVal._v!==kmh){speedVal._v=kmh;speedVal.textContent=String(kmh);}
+ speedFill.style.width=(sr01()*100).toFixed(0)+'%';
+ const lap=Math.min(Math.max(lapDone,1),LAPS);
+ if(lapVal._v!==lap){lapVal._v=lap;lapVal.textContent=lap+'/'+LAPS;}
+ const pTot=lapDone*trackLen+pos;
+ const p=1+ais.filter(a=>a.lap*trackLen+a.pos>pTot).length;
+ if(posVal._v!==p){posVal._v=p;posVal.textContent=ORD[p-1];}
+ if(state==='race'||state==='finish'){
+  const t=Math.round(lapTime);
+  if(timeVal._v!==t){timeVal._v=t;timeVal.textContent=fmt(t);}
+ }
+ const bt=fmt(bestLap);
+ if(bestVal._t!==bt){bestVal._t=bt;bestVal.textContent=bt;}
+}
+function sr01(){return clamp(speed/MAX_SPEED,0,1);}
+/* ---------- main loop ---------- */
+let lastT=0;
+function frame(ts){
+ requestAnimationFrame(frame);
+ const dt=Math.min(0.05,Math.max(0,(ts-lastT)/1000));
+ lastT=ts;
+ try{
+  pollGamepad();
+  if(state==='title')stepAttract(dt);
+  else if(state==='race'&&!paused)stepRace(dt);
+  const sr=sr01(),c=curveAt(pos);
+  bgFar-=c*sr*dt*20;
+  bgNear-=c*sr*dt*38;
+  stepClouds(dt,c,sr);
+  stepBlimp(dt);
+  setEngine(sr,gasHeld());
+  setScreech(Math.abs(steerHeld())*sr);   /* screech = hard steering at speed */
+ if(!(state==='race'&&paused))stepRubber(dt);   /* rubber bits keep flying while on screen */
+ if(!(state==='race'&&paused))stepCrashFx(dt);  /* crash sparks + pieces keep flying while on screen */
+ if(!(state==='race'&&paused))stepSplashFx(dt); /* splash droplets keep flying while on screen */
+  render();
+  updateHud();
+  mirrorStick();
+ }catch(e){   /* one bad frame must never kill the game loop */
+  if(typeof window!=='undefined'&&window.__pp8debug)window.__pp8debug.lastErr=String(e);
+ }
+}
+/* ---------- boot ---------- */
+buildTrack();
+buildPuddles();                            /* random puddles for the attract drive-by + first race */
+resetAis();
+loadBest();
+threeOK=initThree();
+initCarGL();                    /* 3D car sprites (independent of the backdrop) */
+buildGantry();                  /* 3D START gate (reuses the car renderer; no-op until three.js is in) */
+buildBillboards();              /* roadside ad signs: 2D now if three.js is late, 3D once it lands */
+loadFbxCar();                   /* async: swap in the real f1.fbx model (no-op until three.js is in) */
+if(!threeOK){
+  makeSky();makeClouds();makeRidges();   /* 8-bit fallback backdrop */
+  loadThree();                           /* async upgrade to the three.js scenery */
+}
+playerSpr=carSprite(PLAYER_COL);
+state='title';
+requestAnimationFrame(frame);
+/* tiny console hook for playtesting/tuning (harmless in production) */
+if(typeof window!=='undefined')window.__pp8debug={
+ get pos(){return pos;}, set pos(v){pos=((v%trackLen)+trackLen)%trackLen;},
+ get playerX(){return playerX;}, set playerX(v){playerX=v;},
+ get pYaw(){return pYaw;},
+ get joySteer(){return joySteer;}, set joySteer(v){joySteer=v;},
+ get speed(){return speed;}, set speed(v){speed=v;},
+ get MAX_SPEED(){return MAX_SPEED;},
+ curveAt:function(p){return curveAt(p);},
+ render(){render();},
+ get threeOK(){return threeOK;},
+ get blimp(){return BLIMP;},
+ get blimpCv(){return blimpCv;},
+ get billboards(){return BB_LIST;},
+ buildBillboards:function(){return buildBillboards();},
+ get puddles(){return PUDDLES;},
+ buildPuddles:function(){return buildPuddles();},
+ get splashFx(){return splashFx;},
+ get splashCd(){return splashCd;},
+ get hydroT(){return hydroT;},
+ handlePuddles:function(dt){handlePuddles(dt);},
+ get carGL(){return carGL;},
+ get scene3(){return scene3;},
+ get farLayer(){return farLayer;},
+ get nearLayer(){return nearLayer;}
+};
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,3483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Donkey Kong</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#05050f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AIrcade">
+<link rel="icon" type="image/png" href="icons/joystick-192.png">
+<link rel="apple-touch-icon" href="icons/joystick-192.png">
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
+}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  button:focus:not(:focus-visible) { outline: none; }
+  html { overscroll-behavior: none; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; justify-content: center;
+    background: radial-gradient(circle at 50% 30%, #0a0a20 0%, #03030a 70%);
+    font-family: 'Courier New', monospace; color: #fff;
+    touch-action: manipulation; overscroll-behavior: none;
+  }
+  html:fullscreen, html:-webkit-full-screen { background: #03030a; overflow: hidden; }
+  html:fullscreen body, html:-webkit-full-screen body {
+    height: 100vh; align-items: center; justify-content: center;
+  }
+  .wrap { text-align: center; padding: 8px 0 18px; width: 100%; }
+  .titlebar {
+    display: flex; align-items: center; justify-content: space-between;
+    width: min(424px, 96vw); margin: 0 auto;
+  }
+  #backBtn {
+    background: #1c1c4a; color: #ffd23e; border: 2px solid #3a3a9a; border-radius: 8px;
+    font-size: 15px; padding: 4px 12px; cursor: pointer; font-family: inherit;
+    touch-action: manipulation;
+  }
+  #backBtn:hover { background: #2a2a6a; box-shadow: 0 0 10px rgba(90,90,220,.5); }
+  .spacer { width: 66px; }
+  h1 {
+    font-family: 'Press Start 2P', monospace;
+    color: #ff5a3c; letter-spacing: 3px; margin: 10px 0 8px; font-size: 20px;
+    text-shadow: 0 0 14px rgba(255,90,60,.5), 3px 3px 0 #7a2010;
+  }
+  .hud {
+    display: flex; justify-content: space-between; align-items: center;
+    width: min(424px, 96vw); margin: 0 auto 8px;
+    font-family: 'Press Start 2P', monospace; font-size: 11px; letter-spacing: 1px;
+  }
+  .hud b { color: #ffd23e; }
+  .cheat {
+    font-size: 11px; letter-spacing: 1px; padding: 2px 8px; border-radius: 6px;
+    border: 1px solid #3a3a9a; color: #6a6a8a; background: #12122a;
+    white-space: nowrap;
+  }
+  .cheat.on {
+    color: #06202a; background: #3ef5f5; border-color: #3ef5f5;
+    box-shadow: 0 0 12px rgba(62,245,245,.7); font-weight: bold;
+  }
+  .stage {
+    position: relative; display: inline-block; margin: 0 auto;
+    /* 4:3 kept via aspect-ratio; width capped by vh so the whole column
+       (title + HUD + stage + joystick) always fits in the viewport */
+    width: min(420px, 94vw, max(220px, calc((100vh - 340px) * 0.75)));
+    aspect-ratio: 3 / 4;
+    background: #04040c; border: 2px solid #2a2a8a;
+    box-shadow: 0 0 35px rgba(40,40,160,.45);
+  }
+  .stage canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+  #bg { z-index: 1; }
+  #game3d { z-index: 2; pointer-events: none; }
+  #overlay { z-index: 3; touch-action: none; }
+  .hud-bottom { margin-top: 10px; }
+  .lives span {
+    display: inline-block; width: 13px; height: 16px; margin-right: 6px;
+    background: linear-gradient(#e03020 0 55%, #2a3fd4 55% 100%);
+    border: 1px solid #556; border-radius: 3px;
+  }
+  #hearts { color: #ff4d5e; letter-spacing: 1px; }
+  #hearts .off { color: #33334d; }
+  .btns button {
+    background: #1c1c4a; color: #ffd23e; border: 2px solid #3a3a9a; border-radius: 8px;
+    font-size: 16px; padding: 4px 12px; margin-left: 8px; cursor: pointer;
+    font-family: inherit; touch-action: manipulation;
+  }
+  .btns button:active { background: #3a3a9a; }
+  .btns button.active { background: #4a4acc; color: #fff; }
+  /* spread the pads to the edges: joystick to the LEFT, jump to the RIGHT —
+     matches natural thumb positions on phones */
+  .pads {
+    display: flex; align-items: center; justify-content: center;
+    width: min(424px, 94vw); margin: 16px auto 0;
+    column-gap: clamp(40px, 18vw, 96px);
+  }
+  .joy-base {
+    position: relative; width: 132px; height: 132px; margin: 0; border-radius: 50%;
+    background: radial-gradient(circle at 50% 38%, #23236a 0%, #12123a 72%);
+    border: 2px solid #3a3a9a;
+    box-shadow: inset 0 0 20px rgba(0,0,0,.65), 0 0 14px rgba(60,60,180,.35);
+    cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none;
+  }
+  .joy-base.active { border-color: #5555e0; box-shadow: inset 0 0 20px rgba(0,0,0,.5), 0 0 18px rgba(90,90,220,.55); }
+  .joy-stick {
+    position: absolute; left: 50%; top: 50%; width: 14px; height: 38px;
+    margin-left: -7px; margin-top: -38px; border-radius: 7px;
+    background: linear-gradient(90deg, #33353d 0%, #8d93a2 25%, #e8ecf4 48%, #f4f6fa 54%, #7d8392 78%, #2c2e35 100%);
+    box-shadow: 0 2px 6px rgba(0,0,0,.6);
+    transform-origin: 50% 100%;
+    transform: rotate(0deg) scaleY(0);
+  }
+  .joy-knob {
+    position: absolute; left: 50%; top: 50%; width: 54px; height: 54px;
+    margin-left: -27px; margin-top: -27px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ff9d9d 0%, #ff2a2a 45%, #a80f0f 90%);
+    border: 2px solid #7a0a0a; box-shadow: 0 4px 10px rgba(0,0,0,.55);
+    will-change: transform;
+  }
+  .joy-base.active .joy-knob {
+    background: radial-gradient(circle at 35% 30%, #ffc9c9 0%, #ff4444 55%, #9c0c0c 95%);
+    border-color: #ff6b6b;
+  }
+  /* YELLOW JUMP BUTTON — built purely from CSS shapes (circle + triangle) */
+  .jump-btn {
+    position: relative; width: 104px; height: 104px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fff3a0 0%, #ffd400 45%, #c78f00 100%);
+    border: 3px solid #8a6a00;
+    box-shadow: inset 0 -8px 14px rgba(120,80,0,.55), 0 6px 14px rgba(0,0,0,.5), 0 0 18px rgba(255,210,0,.4);
+    cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none;
+  }
+  .jump-btn:active, .jump-btn.active { filter: brightness(1.18); transform: scale(.95); }
+  .j-arrow {
+    position: absolute; left: 50%; top: 40%; width: 0; height: 0; margin-left: -19px;
+    border-left: 19px solid transparent; border-right: 19px solid transparent;
+    border-bottom: 26px solid #7a5a00;
+  }
+  .j-label {
+    position: absolute; left: 0; right: 0; bottom: 15px;
+    font-family: 'Press Start 2P', monospace; font-size: 10px; color: #7a5a00; letter-spacing: 2px;
+  }
+  .hint { margin-top: 14px; color: #7f7fa8; font-size: 11px; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="titlebar">
+    <button id="backBtn" type="button" title="Back to menu" onclick="if(typeof goToMenu==='function'){goToMenu();}else{location.href='index.html';}">← Back</button>
+    <h1>DONKEY KONG</h1>
+    <span class="spacer"></span>
+  </div>
+  <div class="hud">
+    <span>SCORE&nbsp;<b id="score">0</b></span>
+    <span>LVL&nbsp;<b id="level">1</b></span>
+    <span>HP&nbsp;<b id="hearts"></b></span>
+    <span>HIGH&nbsp;<b id="high">0</b></span>
+  </div>
+  <div class="stage" id="stage">
+    <canvas id="bg" width="420" height="560"></canvas>
+    <canvas id="game3d"></canvas>
+    <canvas id="overlay" width="420" height="560"></canvas>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <div class="hud hud-bottom">
+    <span class="lives" id="lives"></span>
+    <span class="cheat" id="cheat" style="display:none">CHEAT MODE</span>
+    <span class="btns">
+      <button id="pauseBtn" type="button" title="Pause (P)">⏸</button>
+      <button id="muteBtn" type="button" title="Mute (M)">🔊</button>
+      <button id="restartBtn" type="button" title="Restart (R)">↺</button>
+    </span>
+  </div>
+  <div class="pads">
+    <div class="joy-base" id="joyBase">
+      <div class="joy-stick" id="joyStick"></div>
+      <div class="joy-knob" id="joyKnob"></div>
+    </div>
+    <div class="jump-btn" id="jumpBtn" title="Jump (SPACE)">
+      <div class="j-arrow"></div>
+      <div class="j-label">JUMP</div>
+    </div>
+  </div>
+  <div class="hint">ARROWS / WASD · SPACE = JUMP · JOYSTICK + YELLOW JUMP · GAMEPAD<br>P = PAUSE · R = RESTART · M = MUTE · C = CHEAT · L = CLEAR LEVEL (WITH CHEAT ON)</div>
+</div>
+<script>
+(function(){
+"use strict";
+/* ===== WORLD (screen coords: x right, y down, origin top-left) ===== */
+var W=420,H=560;
+/* 8 GIRDERS, like the 1981 arcade original. y = surface y at the HIGH end.
+   dir = barrel roll direction: -1 rolls LEFT (left end low - pitches UP from
+   left to right), +1 rolls RIGHT (right end low - pitches DOWN from left to
+   right), 0 = flat. Pitches ALTERNATE, so barrels reverse direction every
+   time they fall off an edge; each girder sits INSIDE the span of the one
+   below it so every edge-fall lands on the level directly underneath.
+   Barrel route: DK drum -> right -> (off edge) -> left -> right -> left ->
+   right -> bottom -> oil drum. */
+var GIRDS=[
+  {x1:0,   x2:420,y:515,dir:-1},  /* 0 bottom: pitches up L->R, barrel rolls left to the oil drum */
+  {x1:10,  x2:410,y:455,dir:1},   /* 1: pitches down L->R, barrel rolls right */
+  {x1:20,  x2:400,y:395,dir:-1},  /* 2: pitches up L->R, barrel rolls left */
+  {x1:30,  x2:390,y:335,dir:1},   /* 3: pitches down L->R, barrel rolls right */
+  {x1:40,  x2:380,y:275,dir:-1},  /* 4: pitches up L->R, barrel rolls left */
+  {x1:50,  x2:370,y:215,dir:1},   /* 5: DONKEY KONG's platform (pitches down L->R), drum at the left */
+  {x1:150, x2:358,y:150,dir:0},   /* 6: PAULINE (7th from bottom) - level girder, no pitch */
+  {x1:160, x2:348,y:92, dir:0}    /* 7: small top platform */
+];
+/* Ladders: one climbable ladder per gap (alternating sides, like the original)
+   plus BROKEN ladders (barrel:true) - barrels roll DOWN them, but Mario cannot
+   climb them at all (not up, not down) - ladderAt() skips broken ladders so
+   Mario can never start on one. Broken ladders are drawn with their middle
+   rungs cut out plus a piece of both side rails removed, so the player can
+   see (and knows not to climb) which ladders are broken.
+   Exception: the top gap (g6-g7) has two working ladders side by side (215 &
+   245). Everywhere else ladders are spaced at least 90px apart, so a broken one is never next to a working one. */
+var LADDS=[
+  {x:360, up:1,down:0},
+  {x:270, up:1,down:0,broken:true,barrel:true},  /* broken - g1 barrel route */
+  {x:170, up:2,down:1},
+  {x:70,  up:2,down:1,broken:true,barrel:true},  /* broken - g2 barrel route */
+  {x:360, up:3,down:2},
+  {x:270, up:3,down:2,broken:true,barrel:true},  /* broken - g3 barrel route */
+  {x:170, up:4,down:3},
+  {x:70,  up:4,down:3,broken:true,barrel:true},  /* broken - g4 barrel route */
+  {x:360, up:5,down:4},
+  {x:270, up:5,down:4,broken:true,barrel:true},  /* broken - g5 barrel route */
+  {x:170, up:6,down:5},                                /* up to Pauline */
+  {x:215, up:7,down:6},                 /* top gap: one just right of Pauline (190) */
+  {x:245, up:7,down:6}                  /* plus one right next to it (two physical ladders) */
+];
+var DRUM={x:28,y:537};
+var PAULINE={x:190,y:150},KISS_X=205;    /* Pauline stands top-LEFT of girder 6; kiss spot just to her right */
+var DKPOS={x:130,y:219};                 /* DK on girder 5 (6th from bottom) */
+var BARREL_STACKS=[{x:64,n:3},{x:92,n:4}]; /* barrel pyramids on DK's LEFT (like the 1981 original): n = total barrels, bottom row of 2 + 1 per row above; DK grabs from the top of the tallest stack */
+var DK_ANIM={turnL:0.30,grab:0.35,turnR:0.30,roll:0.40}; /* DK barrel-throw animation phase durations (s) */
+var PITCH=0.05;                          /* per-girder slope (1981-style gentle pitch) */
+var BR=8.5;                              /* barrel radius in px (physics + visuals) */
+function gy(g,x){                        /* girder surface y at world x */
+  if(!g.dir)return g.y;
+  return g.y+PITCH*(g.dir<0?(g.x2-x):(x-g.x1));
+}
+/* TWO static hammers (arcade style - each can be picked up once, then it's gone).
+   NOTE: the 3D rig is built UPWARD from its anchor (handle 0..17, head at +21),
+   so a hammer occupies HM.y-25..HM.y on screen. Both hang fully in the middle of
+   their gap, clear of both girders. */
+var HAMS=[
+  {x:85, y:gy(GIRDS[3],85)+50,    taken:false}, /* between girders 3 & 4 - original spot, grabbed from the girder below */
+  {x:70, y:gy(GIRDS[4],70)-17.75, taken:false}  /* between girders 5 & 6, LEFT side, grabbed from the girder below */
+];
+var bgCv=document.getElementById('bg'),bgCtx=bgCv.getContext('2d');
+var ovCv=document.getElementById('overlay'),ovCtx=ovCv.getContext('2d');
+var stageEl=document.getElementById('stage');
+var scoreEl=document.getElementById('score'),highEl=document.getElementById('high');
+var levelEl=document.getElementById('level'),livesEl=document.getElementById('lives');
+/* ===== STATE ===== */
+var state='TITLE',stateT=0,paused=false;
+var score=0,lives=3,high=0,level=1,cycles=0,extraAt=10000,newHigh=false;
+var MAX_HEARTS=2,hearts=MAX_HEARTS;  /* per-stage health: 2 hearts, each enemy hit costs one */
+var time=0,titleT=0;
+var particles=[],floats=[];
+var input={left:false,right:false,up:false,down:false};
+var jumpQueued=false;
+var marioBack=false;      /* after vaulting over a ladder, Mario stands with his back to the player (until he walks/jumps) */
+var P=null;            /* player */
+var barrels=[],monkeys=[],bananas=[];
+var fires=[];               /* living barrel-sized fires: walk girders, climb ladders,
+                               kill Mario on touch - born when the blue barrel hits the drum;
+                               on level 5 each new girder reached spawns another (max MAX_FLAMES) */
+var MAX_FLAMES=4;
+var winFx={};               /* one-shot flags for the level-5 victory cutscene */
+var blueNext=false;         /* the next barrel DK rolls is the blue one (first barrel of every stage) */
+/* blue barrel route: rolls RIGHT off DK's girder -> falls off the edge onto
+   the girder below and rolls LEFT -> hits the broken ladder and tumbles over
+   it, dropping STRAIGHT DOWN through the middle girders to the bottom one ->
+   rolls LEFT into the oil drum and explodes into the living fire */
+var hammerHeld=false,hammerTime=0,hammerWarnT=0,dkThrowT=0,dkSpawnT=0,oilFx=0;
+var hamImpactPrev=false;            /* edge-detects the hammer's impact frame for the jolt */
+var dkAnim='idle',dkAnimT=0;             /* DK barrel-throw animation: idle -> turnL -> grab -> turnR -> roll */
+var dkHold={x:92,y:190,visible:false};   /* the barrel DK is holding while he grabs / rolls it out */
+var shakeT=0,shakeAmp=0,shakeX=0,shakeY=0;
+function triggerShake(amp,dt){shakeAmp=amp;shakeT=dt;}
+/* ===== STAGE 1 CLEAR CUTSCENE =====
+   DK gets angry, walks over to Pauline, climbs up to her, grabs her and
+   carries her UP the ladder to the top girder, then stomps three times.
+   Each stomp landing shakes the screen, pops a chunk of the barrels still
+   on the move (none survive the 3rd stomp) AND jostles Mario off two
+   girders - after all 3 he's back at the very bottom, so the next stage
+   starts another full climb to save Pauline. Then the stage fades out.
+   No new barrels are thrown during the cutscene. */
+var SC_T={angryEnd:0.55,walkAEnd:1.15,climbAEnd:1.90,walkBEnd:2.25,grabEnd:2.70,
+          walkCEnd:3.10,climbBEnd:3.70,settleEnd:3.95,stompDur:0.62};
+SC_T.stompEnd=SC_T.settleEnd+3*SC_T.stompDur; /* 3rd stomp has landed */
+SC_T.fadeEnd=SC_T.stompEnd+0.75;              /* faded fully to black    */
+var scT=0,scStomps=0,scFlags={grab:false};
+function scLerp(a,b,k){return a+(b-a)*Math.max(0,Math.min(1,k));}
+/* DK + Pauline world position (screen coords) at cutscene time T */
+function scInfo(T){
+  var S=SC_T,g5=GIRDS[5],g6=GIRDS[6],g7=GIRDS[7];
+  var yB0=gy(g6,170);                       /* Pauline's girder (flat, y=150) */
+  var yC1=gy(g7,215);                       /* top girder surface (y=92)      */
+  var gx=PAULINE.x-6;                       /* DK stops just LEFT of Pauline  */
+  var o={dkx:DKPOS.x,dky:gy(g5,DKPOS.x),px:PAULINE.x,py:gy(g6,PAULINE.x),
+         carry:false,phase:'angry',hop:0};
+  if(T<S.angryEnd){o.phase='angry';}
+  else if(T<S.walkAEnd){                    /* walk along girder 5 to the ladder */
+    o.phase='walk';
+    o.dkx=scLerp(DKPOS.x,170,(T-S.angryEnd)/(S.walkAEnd-S.angryEnd));
+    o.dky=gy(g5,o.dkx);
+  }else if(T<S.climbAEnd){                  /* climb the x=170 ladder up to her */
+    o.phase='climb';o.dkx=170;
+    o.dky=scLerp(gy(g5,170),yB0,(T-S.walkAEnd)/(S.climbAEnd-S.walkAEnd));
+  }else if(T<S.walkBEnd){                   /* step over to Pauline */
+    o.phase='walk';
+    o.dkx=scLerp(170,gx,(T-S.climbAEnd)/(S.walkBEnd-S.climbAEnd));
+    o.dky=yB0;
+  }else if(T<S.grabEnd){                    /* grab her! */
+    o.phase='grab';o.dkx=gx;o.dky=yB0;
+  }else if(T<S.walkCEnd){                   /* carry her over to the top ladder */
+    o.phase='carry';o.carry=true;
+    o.dkx=scLerp(gx,215,(T-S.grabEnd)/(S.walkCEnd-S.grabEnd));
+    o.dky=yB0;
+    o.px=o.dkx+9;o.py=o.dky+13;            /* held up beside him */
+  }else if(T<S.climbBEnd){                  /* climb UP with her to the top girder */
+    o.phase='climb';o.carry=true;o.dkx=215;
+    o.dky=scLerp(yB0,yC1,(T-S.walkCEnd)/(S.climbBEnd-S.walkCEnd));
+    o.px=o.dkx+9;o.py=o.dky+13;
+  }else{
+    o.phase=(T<S.settleEnd)?'settle':'stomp';
+    o.dkx=215;o.dky=yC1;
+    o.px=232;o.py=yC1;                     /* she stands on the top girder */
+    if(T>=S.settleEnd){
+      var stT2=T-S.settleEnd,ix=Math.floor(stT2/S.stompDur);
+      if(ix<3)o.hop=Math.abs(Math.sin(Math.PI*((stT2-ix*S.stompDur)/S.stompDur)))*12;
+    }
+  }
+  return o;
+}
+/* ===== PRE-LEVEL INTRO CUTSCENE (before EVERY level, incl. level 1) =====
+   DK carries Pauline (freshly snatched) along his girder to the x=170
+   ladder, climbs up one girder with her, carries her over to the x=215
+   ladder and climbs to the VERY TOP of the building, then sets her down.
+   Then "HOW HIGH CAN YOU GET?" pops up in 8-bit text with a jingle while
+   bi-planes fly past in the background (King Kong style) - and the level
+   begins. The stage-clear cutscene (stomping) still plays first; this is
+   the little story beat AFTER it, before the level starts. */
+var INTRO_T={walkAEnd:0.90,climbAEnd:1.80,walkBEnd:2.40,climbBEnd:3.30,
+             settleEnd:3.90,planeStart:3.70,question:4.10,end:7.60};
+var introT=0,introFx={jingle:false};
+function introInfo(T){
+  var S=INTRO_T,g5=GIRDS[5],g6=GIRDS[6],g7=GIRDS[7];
+  var yA1=gy(g5,170),yB1=gy(g6,215),yC=gy(g7,215);
+  var o={dkx:84,dky:gy(g5,84),px:93,py:gy(g5,84)+13,carry:true,phase:'carry',hop:0};
+  if(T<S.walkAEnd){                        /* carry her along DK's girder to the ladder */
+    o.dkx=scLerp(84,170,T/S.walkAEnd);o.dky=gy(g5,o.dkx);
+    o.px=o.dkx+9;o.py=o.dky+13;
+  }else if(T<S.climbAEnd){                 /* climb UP one girder with her */
+    o.phase='climb';o.dkx=170;
+    o.dky=scLerp(yA1,gy(g6,170),(T-S.walkAEnd)/(S.climbAEnd-S.walkAEnd));
+    o.px=o.dkx+9;o.py=o.dky+13;
+  }else if(T<S.walkBEnd){                  /* carry her over to the top ladder */
+    o.dkx=scLerp(170,215,(T-S.climbAEnd)/(S.walkBEnd-S.climbAEnd));o.dky=gy(g6,215);
+    o.px=o.dkx+9;o.py=o.dky+13;
+  }else if(T<S.climbBEnd){                 /* climb to the very top of the building */
+    o.phase='climb';o.dkx=215;
+    o.dky=scLerp(yB1,yC,(T-S.walkBEnd)/(S.climbBEnd-S.walkBEnd));
+    o.px=o.dkx+9;o.py=o.dky+13;
+  }else{                                   /* set her down on the top girder - she waves */
+    o.phase='settle';o.carry=false;
+    o.dkx=215;o.dky=yC;o.px=234;o.py=yC;
+  }
+  return o;
+}
+/* WIN cutscene (clear level 5): Pauline is saved, DK tumbles off the building,
+   lands knocked out cold, then the "GAME OVER - YOU WIN!" screen. */
+var WIN_T={fallStart:1.1,fallEnd:2.2,winT:4.4};
+function winInfo(T){
+  var o={dkx:DKPOS.x,dky:gy(GIRDS[5],DKPOS.x),px:PAULINE.x,py:gy(GIRDS[6],PAULINE.x),
+         rot:0,lying:false,hop:0,phase:'win'};
+  if(T>=WIN_T.fallStart&&T<WIN_T.fallEnd){
+    var k=(T-WIN_T.fallStart)/(WIN_T.fallEnd-WIN_T.fallStart);
+    o.dkx=DKPOS.x-(DKPOS.x-56)*smooth01(Math.min(1,k*2.2));       /* slides off the left edge */
+    var kf=Math.max(0,(k-0.4)/0.6);
+    o.dky=gy(GIRDS[5],56)+(gy(GIRDS[0],56)-gy(GIRDS[5],56))*kf*kf; /* gravity fall to the ground */
+    o.rot=k*Math.PI*2;                                             /* tumbling over and over */
+  }else if(T>=WIN_T.fallEnd){
+    o.dkx=56;o.dky=gy(GIRDS[0],56);o.rot=Math.PI/2;o.lying=true;  /* out cold on the ground */
+  }
+  return o;
+}
+/* ===== CHEAT MODE (C to toggle, like pacman) =====
+   Mario is invincible: enemies/oil drum don't kill him and no lives are lost. */
+var cheatMode=false,cheatEl=document.getElementById('cheat');
+function toggleCheat(){
+  cheatMode=!cheatMode;
+  if(cheatEl){
+    cheatEl.style.display=cheatMode?'':'none';
+    cheatEl.textContent=cheatMode?'CHEAT MODE':'CHEAT OFF';
+    cheatEl.className=cheatMode?'cheat on':'cheat';
+  }
+}
+function ladderAt(floor,x){
+  for(var i=0;i<LADDS.length;i++){var L=LADDS[i];
+    if(L.broken)continue;   /* Mario can never use a broken ladder (not up, not down) */
+    if(L.up===floor||L.down===floor){if(Math.abs(L.x-x)<15)return L;}}
+  return null;
+}
+function groundBelow(x,fromY){
+  var best=-1,by=Infinity;
+  for(var i=0;i<GIRDS.length;i++){var g=GIRDS[i];
+    if(x>=g.x1&&x<=g.x2){var s=gy(g,x);if(s>=fromY&&s<by){by=s;best=i;}}}
+  return best;
+}
+/* 4 stages, 8 levels per cycle: stage = (level-1) % 4 + 1, so level 1 and 5
+   both show stage 1, level 2 and 6 both show stage 2, and so on. */
+function stageOf(){return ((level-1)%4)+1;}
+/* 5 levels, each one harder than the last - via NEW FEATURES ONLY.
+   Barrel / monkey / fire SPEEDS stay flat: the new features are the
+   difficulty, not a speed ramp (the game is hard enough as-is).
+   L1  barrels only                      L4  monkeys leave banana skins on the girders
+   L2  monkeys appear                    L5  flames multiply on new girders (max 4 alive)
+   L3  monkeys climb ladders & roam the    and monkeys drop bananas on Mario from above */
+function levelParams(){
+  var lv=Math.min(level,5);
+  var sp=88;                       /* barrel speed: constant on every level */
+  var gap=Math.max(1.15,2.1-(lv-1)*0.25-cycles*0.12);
+  var mk=(lv<=1)?0:(lv===5?3:2);
+  return {bsp:sp,gap:gap,mk:mk,msp:52,
+          mclimb:lv>=3?1:0,
+          mbanana:lv>=4?1:0,
+          mdrop:lv>=5?1:0};
+}
+/* ===== AUDIO (chiptune, Web Audio) ===== */
+var actx=null,muted=false;
+function ac(){
+  if(!actx){var AC=window.AudioContext||window.webkitAudioContext;if(AC){try{actx=new AC();}catch(e){}}}
+  if(actx&&actx.state==='suspended')actx.resume();
+  return actx;
+}
+function tone(freq,dur,type,vol,slideTo,delay){
+  var a=actx;if(!a||muted)return;
+  try{
+    var t=a.currentTime+(delay||0);
+    var o=a.createOscillator(),g=a.createGain();
+    o.type=type||'square';o.frequency.setValueAtTime(Math.max(30,freq),t);
+    if(slideTo)o.frequency.exponentialRampToValueAtTime(Math.max(30,slideTo),t+dur);
+    g.gain.setValueAtTime(vol||0.1,t);g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g);g.connect(a.destination);o.start(t);o.stop(t+dur+0.05);
+  }catch(e){}
+}
+function noiseBurst(dur,vol,delay,cut){
+  var a=actx;if(!a||muted)return;
+  try{
+    var t=a.currentTime+(delay||0);
+    var len=Math.max(1,Math.floor(a.sampleRate*dur));
+    var buf=a.createBuffer(1,len,a.sampleRate);
+    var d=buf.getChannelData(0);
+    for(var i=0;i<len;i++)d[i]=Math.random()*2-1;
+    var src=a.createBufferSource(),g=a.createGain(),f=a.createBiquadFilter();
+    src.buffer=buf;f.type='highpass';f.frequency.value=cut||2000;
+    g.gain.setValueAtTime(vol||0.05,t);g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    src.connect(f);f.connect(g);g.connect(a.destination);
+    src.start(t);src.stop(t+dur+0.02);
+  }catch(e){}
+}
+/* DK-style chiptune loop: bouncy square melody + pumping triangle bass */
+var MEL=[440,0,523.25,0,440,0,659.25,0,523.25,0,440,0,659.25,0,880,0,
+         440,0,523.25,0,440,0,659.25,0,587.33,0,523.25,0,440,0,659.25,440];
+var BAS=[110,0,0,0,110,0,0,0,110,0,0,0,164.81,0,0,0,
+         110,0,0,0,110,0,0,0,98,0,0,0,82.41,0,0,0];
+var MUSIC={on:false,step:0,nextT:0,dur:0.115};
+function musicMode(m){
+  if(m==='off'){MUSIC.on=false;return;}
+  if(!actx)return;
+  MUSIC.on=true;MUSIC.step=0;MUSIC.nextT=actx.currentTime+0.1;
+  MUSIC.dur=(m==='title')?0.135:Math.max(0.078,0.115-0.006*(level-1)-0.005*cycles);
+}
+function musicUpdate(){
+  var a=actx;if(!a||muted||!MUSIC.on)return;
+  var horizon=a.currentTime+0.3;
+  while(MUSIC.nextT<horizon){
+    var s=MUSIC.step%32,d=MUSIC.nextT-a.currentTime;
+    var lf=MEL[s];
+    if(lf)tone(lf,MUSIC.dur*0.92,'square',0.045,0,d);
+    var bf=BAS[s];
+    if(bf){tone(bf,MUSIC.dur*0.9,'triangle',0.075,0,d);tone(bf*2,MUSIC.dur*0.4,'square',0.018,0,d);}
+    if(s%4===0)noiseBurst(0.03,0.012,d,5500);
+    MUSIC.nextT+=MUSIC.dur;MUSIC.step++;
+  }
+}
+var sfx={
+  jump:function(){tone(240,0.14,'square',0.10,720);},
+  land:function(){tone(120,0.06,'square',0.06,60);},
+  tick:function(){tone(90,0.05,'square',0.07,50);},
+  hammer:function(){tone(660,0.1,'square',0.1);tone(880,0.12,'square',0.1,0,0.08);},
+  smash:function(){noiseBurst(0.16,0.14,0,900);tone(160,0.18,'square',0.12,55);},
+  monkey:function(){tone(320,0.22,'sawtooth',0.12,70);noiseBurst(0.1,0.06,0,1500);},
+  drop:function(){tone(220,0.16,'square',0.09,70);},
+  hammerWarn:function(){tone(1174,0.06,'square',0.1);tone(1174,0.06,'square',0.1,0,0.11);},
+  kiss:function(){[660,880,1108,1318,1760].forEach(function(f,i){tone(f,0.14,'triangle',0.1,0,i*0.1);});tone(2093,0.3,'triangle',0.06,0,0.5);},
+  dkAngry:function(){tone(130,0.5,'sawtooth',0.16,50);tone(75,0.65,'sawtooth',0.1,38,0.15);noiseBurst(0.4,0.1,0.05,500);},
+  grab:function(){tone(210,0.12,'square',0.1,120);noiseBurst(0.09,0.08,0,1200);},
+  stomp:function(){noiseBurst(0.13,0.22,0,320);tone(85,0.2,'sine',0.22,36);},
+  jingle:function(){
+    /* "HOW HIGH CAN YOU GET?" - bouncy 8-bit call and answer */
+    var M=[523.25,659.25,783.99,1046.5,0,1046.5,0,783.99,
+           659.25,783.99,1046.5,1318.5,0,1318.5,0,1567.98];
+    for(var i=0;i<M.length;i++){
+      if(M[i]){tone(M[i],0.11,'square',0.09,0,i*0.12);tone(M[i]/2,0.11,'triangle',0.045,0,i*0.12);}
+    }
+    tone(2093,0.45,'square',0.06,0,16*0.12);
+  },
+  plane:function(){
+    /* distant 1930s bi-plane engine drone (King Kong overfly) */
+    tone(78,3,'sawtooth',0.03,52);
+    tone(118,3,'square',0.013,86,0.3);
+    noiseBurst(0.5,0.015,0.1,260);
+  },
+  boom:function(){noiseBurst(0.3,0.2,0,480);tone(150,0.32,'sawtooth',0.14,42);},
+  clear:function(){[523,659,784,1046,1318,1568].forEach(function(f,i){tone(f,0.13,'square',0.09,0,i*0.09);});},
+  die:function(){
+    var a=actx;if(!a||muted)return;
+    try{
+      var t=a.currentTime,o=a.createOscillator(),g=a.createGain();
+      o.type='sawtooth';o.frequency.setValueAtTime(520,t);
+      o.frequency.exponentialRampToValueAtTime(55,t+1.3);
+      g.gain.setValueAtTime(0.2,t);g.gain.setValueAtTime(0.2,t+1.1);
+      g.gain.exponentialRampToValueAtTime(0.001,t+1.4);
+      o.connect(g);g.connect(a.destination);o.start(t);o.stop(t+1.45);
+    }catch(e){}
+  },
+  oil:function(){noiseBurst(0.45,0.18,0,700);tone(220,0.5,'sawtooth',0.14,38);},
+  dk:function(){tone(140,0.2,'sawtooth',0.12,70);tone(90,0.25,'triangle',0.08,50,0.12);},
+  ready:function(){[440,554,659,880].forEach(function(f,i){tone(f,0.12,'square',0.09,0,i*0.12);});},
+  extraLife:function(){[523,659,784,1046].forEach(function(f,i){tone(f,0.1,'square',0.1,0,i*0.1);});tone(1568,0.3,'triangle',0.1,0,0.4);},
+  gameStart:function(){[392,523,659,784,1046].forEach(function(f,i){tone(f,0.12,'square',0.1,0,i*0.11);});},
+  gameover:function(){[440,349,293,220,164].forEach(function(f,i){tone(f,0.22,'triangle',0.11,0,i*0.22);});},
+  interm:function(){[523,659,784,1046,784,1046,1318,1568,1760,2093].forEach(function(f,i){tone(f,0.14,'square',0.07,0,i*0.13);tone(f/2,0.14,'triangle',0.04,0,i*0.13);});},
+  slip:function(){tone(320,0.14,'sawtooth',0.1,110);tone(150,0.2,'square',0.09,65,0.09);noiseBurst(0.09,0.05,0,1400);},
+   ouch:function(){tone(540,0.1,'square',0.12,300);tone(300,0.3,'square',0.1,95,0.11);noiseBurst(0.12,0.05,0.05,1000);},
+  win:function(){[523,659,784,1046,1318,1568,2093].forEach(function(f,i){tone(f,0.15,'square',0.09,0,i*0.12);tone(f/2,0.15,'triangle',0.05,0,i*0.12);});},
+  pause:function(){tone(300,0.08,'square',0.08,150);}
+};
+/* ===== 3D SCENE (three.js) ===== */
+var D3=null;
+(function init3d(){
+  var c3d=document.getElementById('game3d');
+  if(typeof THREE==='undefined'){c3d.style.display='none';return;}
+  try{
+    var renderer=new THREE.WebGLRenderer({canvas:c3d,alpha:true,antialias:true});
+    renderer.setClearColor(0x000000,0);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    var size3d=function(){
+      var w=stageEl.clientWidth||W,h=stageEl.clientHeight||H;
+      renderer.setSize(w,h,false);
+    };
+    size3d();
+    window.addEventListener('resize',size3d);
+    var camera=new THREE.OrthographicCamera(-W/2,W/2,H/2,-H/2,0.1,2000);
+    camera.position.set(0,42,300);
+    camera.lookAt(0,0,0);
+    camera.updateMatrixWorld(true);
+    camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+    var baseCam=camera.clone();
+    baseCam.updateMatrixWorld(true);
+    baseCam.matrixWorldInverse.copy(baseCam.matrixWorld).invert();
+    var scene=new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xcfd8ff,0x0a0a14,0.9));
+    var keyL=new THREE.DirectionalLight(0xfff2d0,0.9);keyL.position.set(-120,180,240);scene.add(keyL);
+    var rimL=new THREE.DirectionalLight(0x6688ff,0.35);rimL.position.set(140,-60,200);scene.add(rimL);
+    var _v=new THREE.Vector3();
+    function to3d(px,py){_v.set((px/W)*2-1,1-(py/H)*2,0.5).unproject(baseCam);return _v;}
+    function mat(c,o){
+      var p={color:c,roughness:0.55,metalness:0.15};
+      if(o){for(var k in o)p[k]=o[k];}
+      return new THREE.MeshStandardMaterial(p);
+    }
+    /* steel girders: 1930s truss beams - thin metal bars on top & bottom with a
+       tall open X lattice between them (big dark spaces, thin X lines) */
+    for(var gi=0;gi<GIRDS.length;gi++){
+      (function(g){
+        var len=g.x2-g.x1,mx=(g.x1+g.x2)/2;
+        var ang=(g.dir>0)?-Math.atan(PITCH):(g.dir<0?Math.atan(PITCH):0);
+        var grp=new THREE.Group();
+        var railM=mat(0xff6a8f,{roughness:0.5,metalness:0.2,emissive:0x661030,emissiveIntensity:0.55});
+        var crossM=mat(0xff4d7d,{roughness:0.55,metalness:0.15,emissive:0x4d0e26,emissiveIntensity:0.5});
+        var n=Math.max(1,Math.round(len/14));              /* number of X cells */
+        var xE=n*7;                                        /* lattice extent: -xE .. +xE */
+        var rT=new THREE.Mesh(new THREE.BoxGeometry(2*xE,2,12.5),railM);
+        rT.position.y=6;grp.add(rT);                       /* thin top bar    (screen gy+0..gy+2)    */
+        var rB=new THREE.Mesh(new THREE.BoxGeometry(2*xE,2,12.5),railM);
+        rB.position.y=-6;grp.add(rB);                      /* thin bottom bar (screen gy+12..gy+14) */
+        var cGeo=new THREE.BoxGeometry(17.2,1.8,11);
+        var tc=Math.atan(10/14);                            /* slant so each X spans the open gap edge-to-edge */
+        for(var k=0;k<n;k++){
+          var cx=-xE+(k+0.5)*14;                           /* bars end exactly at the outer X edges */
+          var c1=new THREE.Mesh(cGeo,crossM);c1.position.set(cx,0,0);c1.rotation.z=tc;grp.add(c1);
+          var c2=new THREE.Mesh(cGeo,crossM);c2.position.set(cx,0,0);c2.rotation.z=-tc;grp.add(c2);
+        }
+        grp.position.copy(to3d(mx,gy(g,mx)+7));
+        grp.rotation.z=ang;
+        scene.add(grp);
+      })(GIRDS[gi]);
+    }
+    /* ladders: arcade cyan - broken ones have their middle rungs AND a piece
+       of both side rails cut out, so the player can see they're broken */
+    var mRail=mat(0x36f0f0,{metalness:0.15,roughness:0.45,emissive:0x0c5f5f,emissiveIntensity:0.7});
+    var mRung=mat(0x9ff8f8,{metalness:0.1,roughness:0.4,emissive:0x0e6a6a,emissiveIntensity:0.6});
+    for(var li=0;li<LADDS.length;li++){
+      (function(L){
+        var yB=gy(GIRDS[L.down],L.x);                    /* foot at the TOP of the lower girder */
+        var yT=gy(GIRDS[L.up],L.x)+14;                   /* top at the BOTTOM of the upper girder (14px truss) */
+        var mid=(yT+yB)/2,cut=12;                        /* broken: height of the cut-out zone (2 middle rungs) */
+        function rail(x,yA,yB2){
+          var hh=yB2-yA;if(hh<4)return;
+          var m=new THREE.Mesh(new THREE.BoxGeometry(3,hh,3),mRail);
+          m.position.copy(to3d(x,(yA+yB2)/2));scene.add(m);
+        }
+        if(L.broken){
+          rail(L.x-5,yT,mid-cut);rail(L.x-5,mid+cut,yB); /* left rail, middle chunk missing  */
+          rail(L.x+5,yT,mid-cut);rail(L.x+5,mid+cut,yB); /* right rail, middle chunk missing */
+        }else{
+          rail(L.x-5,yT,yB);rail(L.x+5,yT,yB);
+        }
+        for(var ri=1;ri<=4;ri++){                        /* 4 evenly-spaced rungs */
+          var ry=yT+(yB-yT)*ri/5;
+          if(L.broken&&Math.abs(ry-mid)<cut)continue;    /* middle rungs cut out */
+          var rung=new THREE.Mesh(new THREE.BoxGeometry(13,2.5,2.5),mRung);
+          rung.position.copy(to3d(L.x,ry));scene.add(rung);
+        }
+      })(LADDS[li]);
+    }
+    /* oil drum + flames */
+    var drumGrp=new THREE.Group();
+    var drum=new THREE.Mesh(new THREE.CylinderGeometry(8.5,8.5,17,20),mat(0xc0392b,{roughness:0.5}));
+    drum.position.y=8.5;drumGrp.add(drum);
+    var band=new THREE.Mesh(new THREE.CylinderGeometry(8.9,8.9,4,20),mat(0xf1c40f,{roughness:0.4}));
+    band.position.y=9;drumGrp.add(band);
+    var flames=[];
+    var flameCol=[0xff7b00,0xffc107,0xff4d00];
+    for(var fi=0;fi<3;fi++){
+      var fm=new THREE.Mesh(
+        new THREE.ConeGeometry(2.4,9,8),
+        new THREE.MeshStandardMaterial({color:flameCol[fi],emissive:0xff3300,emissiveIntensity:0.9,transparent:true,opacity:0.85})
+      );
+      fm.position.set((fi-1)*2.6,20,(fi-1)*0.7);
+      drumGrp.add(fm);flames.push(fm);
+    }
+    drumGrp.position.copy(to3d(DRUM.x,DRUM.y-2));
+    scene.add(drumGrp);
+    /* hammers hanging in the gaps (arcade positions) - one per HAMS entry */
+    var hamLs=[];
+    for(var hbi=0;hbi<HAMS.length;hbi++){
+      (function(HM){
+        var ham=new THREE.Group();
+        var hHandle=new THREE.Mesh(new THREE.CylinderGeometry(1.7,1.7,17,10),mat(0x8f5a26));
+        hHandle.position.y=8.5;ham.add(hHandle);
+        var hCollar=new THREE.Mesh(new THREE.CylinderGeometry(2.5,2.5,2.4,10),mat(0x666d78,{metalness:0.6,roughness:0.35}));
+        hCollar.position.y=16.5;ham.add(hCollar);
+        var hHead=new THREE.Mesh(new THREE.BoxGeometry(13,7.5,7.5),mat(0x666d78,{metalness:0.6,roughness:0.35}));
+        hHead.position.y=21;ham.add(hHead);
+        ham.position.copy(to3d(HM.x,HM.y));
+        scene.add(ham);
+        hamLs.push({grp:ham,baseY:to3d(HM.x,HM.y).y,ref:HM});
+      })(HAMS[hbi]);
+    }
+    /* the living fire: an ANGRY, raging fire (bigger than a barrel) that walks
+       the girders and climbs ladders - born when the blue barrel hits the drum.
+       Five layered flame tips, each flickering on its own phase. */
+    /* POOL of up to MAX_FLAMES living fires (level 5 can have 4 at once) */
+    var tipDefs=[
+      {r:5.6,h:21,x:-4.2,ph:0.0,c:0xff2d00,e:0xdd1500,o:0.95},
+      {r:5.2,h:25,x: 0.0,ph:2.1,c:0xff5500,e:0xff3300,o:0.92},
+      {r:4.8,h:19,x: 4.2,ph:4.4,c:0xff7b00,e:0xff4d00,o:0.92},
+      {r:3.4,h:15,x:-1.6,ph:1.3,c:0xffc107,e:0xffaa00,o:0.90},
+      {r:2.6,h:11,x: 2.2,ph:3.5,c:0xfff0a0,e:0xffdd55,o:0.85}
+    ];
+    var firePool=[],fireTipsPool=[];
+    for(var fpi=0;fpi<4;fpi++){
+      var fireGrp=new THREE.Group();
+      var fireTips=[];
+      for(var fgi=0;fgi<tipDefs.length;fgi++){
+        (function(td,off){
+          var fgeo=new THREE.ConeGeometry(td.r,td.h,8);
+          fgeo.translate(0,td.h/2,0);   /* pivot at the BASE so the flame stretches UP from the girder */
+          var fm=new THREE.Mesh(
+            fgeo,
+            new THREE.MeshStandardMaterial({color:td.c,emissive:td.e,emissiveIntensity:1.0,transparent:true,opacity:td.o})
+          );
+          fm.position.set(td.x,0,0);
+          fireGrp.add(fm);
+          fireTips.push({m:fm,h:td.h,x:td.x,ph:td.ph+off,mat:fm.material});
+        })(tipDefs[fgi],fpi*1.9);
+      }
+      fireGrp.visible=false;
+      scene.add(fireGrp);
+      firePool.push(fireGrp);
+      fireTipsPool.push(fireTips);
+    }
+    /* banana (slip traps the monkeys leave on the girders): a REAL banana
+       standing on end - a tapered, gently curved body lofted from a dense
+       chain of high-poly spheres (plump belly, thin ends), green at the
+       stem, dark tip at the base, brown speckles. Spins on the Y axis so
+       the player always notices it. */
+    function buildBanana(){
+      var grp=new THREE.Group();
+      var mBody=new THREE.MeshStandardMaterial({color:0xffd23e,emissive:0x8a6410,emissiveIntensity:0.35,roughness:0.45});
+      var mGreen=new THREE.MeshStandardMaterial({color:0x9dbf3a,emissive:0x39500f,emissiveIntensity:0.3,roughness:0.5});
+      var mStem=new THREE.MeshStandardMaterial({color:0x6b4a1e,emissive:0x2a1c08,emissiveIntensity:0.3,roughness:0.6});
+      var mTip=new THREE.MeshStandardMaterial({color:0x4a3311,emissive:0x18100a,emissiveIntensity:0.3,roughness:0.6});
+      var mSpot=new THREE.MeshStandardMaterial({color:0x7a5a20,roughness:0.7});
+      var H=16,SEG=26;
+      var sGeo=new THREE.SphereGeometry(1,24,16);
+      /* plump belly, tapered ends */
+      var prof=function(tt){return 0.55+3.0*Math.pow(Math.sin(Math.PI*Math.min(1,0.06+0.94*tt)),0.75);};
+      /* gentle C-curve in the XZ-free XY plane; base sits at y=0 */
+      var path=function(tt){return {x:2.0*Math.sin(Math.PI*tt),y:H*tt};};
+      for(var s=0;s<=SEG;s++){
+        var tt=s/SEG,pp=path(tt),rr=prof(tt);
+        var sm=new THREE.Mesh(sGeo,(tt>0.90)?mGreen:mBody);
+        sm.position.set(pp.x,pp.y,0);
+        sm.scale.set(rr,rr*0.42,rr*0.85); /* stretch along the curve: one smooth body */
+        grp.add(sm);
+      }
+      var base=path(0.02),top=path(0.98);
+      var tipm=new THREE.Mesh(new THREE.SphereGeometry(0.95,18,12),mTip);
+      tipm.position.set(base.x*0.9,0.6,0);grp.add(tipm);
+      var stem=new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.95,3.0,12),mStem);
+      stem.position.set(top.x,top.y+1.1,0);stem.rotation.z=-0.28;grp.add(stem);
+      var cap=new THREE.Mesh(new THREE.SphereGeometry(0.7,14,10),mGreen);
+      cap.position.set(top.x,top.y+0.4,0);grp.add(cap);
+      /* a few ripening speckles on the skin */
+      var spotDefs=[[0.22,0.5],[0.78,1.1],[-0.6,0.9],[0.6,-0.7],[1.1,0.6],[-1.0,-0.5],[0.15,-0.95]];
+      for(var spq=0;spq<spotDefs.length;spq++){
+        var st=spotDefs[spq][0],an=spotDefs[spq][1];
+        var rp=path(st),rry=prof(st)*0.85;
+        var spm=new THREE.Mesh(new THREE.SphereGeometry(0.42,10,8),mSpot);
+        spm.position.set(rp.x+Math.cos(an)*rry,H*st,Math.sin(an)*rry);
+        grp.add(spm);
+      }
+      return grp;
+    }
+    var bananaPool=[];
+    for(var bpi=0;bpi<10;bpi++){
+      var bm=buildBanana();
+      bm.visible=false;
+      scene.add(bm);
+      bananaPool.push(bm);
+    }
+    D3={
+      renderer:renderer,scene:scene,camera:camera,to3d:to3d,
+      flames:flames,hamLs:hamLs,fire:firePool[0],fireTips:fireTipsPool[0],
+      firePool:firePool,fireTipsPool:fireTipsPool,bananaPool:bananaPool
+    };
+    D3.camDir=camera.position.clone().normalize();
+    /* ---------- MARIO (fat Italian plumber, high poly) ---------- */
+    function buildMario(){
+      var g=new THREE.Group();
+      var mRed=mat(0xe03020),mBlue=mat(0x2a3fd4),mSkin=mat(0xffcf9e);
+      var mStubble=mat(0xeab07e),mHair=mat(0x5a3418),mGlove=mat(0xf5f2ec);
+      var mDark=mat(0x181820),mBrown=mat(0x6a4020),mMust=mat(0x4a2c14);
+      var mGold=mat(0xf1c40f,{metalness:0.5,roughness:0.35});
+      function sph(r,m,seg){return new THREE.Mesh(new THREE.SphereGeometry(r,seg||28,seg||28),m);}
+      /* legs: chunky overall legs + big brown shoes with a white sole,
+         pivoting at the hips so walk / climb / vault swings look right */
+      function leg(side){
+        var a=new THREE.Group();a.position.set(side*3.3,9.5,0);
+        var th=new THREE.Mesh(new THREE.CylinderGeometry(2.5,2.0,4.5,20),mBlue);th.position.y=-2.2;a.add(th);
+        var kn=sph(2.1,mBlue);kn.position.y=-4.4;a.add(kn);
+        var ca=new THREE.Mesh(new THREE.CylinderGeometry(1.9,1.7,3,20),mBlue);ca.position.y=-6.0;a.add(ca);
+        var sole=sph(2.75,mGlove);sole.scale.set(0.95,0.35,1.35);sole.position.set(0.7,-8.5,0.9);a.add(sole);
+        var shoe=sph(2.7,mBrown);shoe.scale.set(1.0,0.6,1.4);shoe.position.set(0.7,-7.9,0.9);a.add(shoe);
+        return a;
+      }
+      var legL=leg(-1),legR=leg(1);
+      g.add(legL,legR);
+      /* body: proper plumber GUTS - big round belly, red shirt, blue overalls
+         with a front bib, shoulder straps and gold buttons */
+      var belly=sph(5.3,mRed);belly.scale.set(1.3,1.05,1.05);belly.position.y=13.8;g.add(belly);
+      var chest=sph(4.7,mRed);chest.scale.set(1.22,1.0,0.98);chest.position.y=17.2;g.add(chest);
+      var hipB=sph(4.9,mBlue);hipB.scale.set(1.32,0.85,1.05);hipB.position.y=10.6;g.add(hipB);
+      var bib=sph(3.3,mBlue);bib.scale.set(1.0,1.05,0.4);bib.position.set(0,15.2,4.2);g.add(bib);
+      var st1=sph(1.15,mBlue);st1.scale.set(1.0,0.6,1.5);st1.position.set(-2.4,18.6,2.6);g.add(st1);
+      var st2=sph(1.15,mBlue);st2.scale.set(1.0,0.6,1.5);st2.position.set(2.4,18.6,2.6);g.add(st2);
+      var bt1=sph(0.6,mGold);bt1.position.set(-1.6,17.2,5.0);g.add(bt1);
+      var bt2=sph(0.6,mGold);bt2.position.set(1.6,17.2,5.0);g.add(bt2);
+      var collar=sph(2.2,mGlove);collar.scale.set(1.0,0.4,1.0);collar.position.set(0,20.3,0.4);g.add(collar);
+      /* arms: chunky red sleeves with big white gloves, pivoting at the shoulders */
+      function arm(side){
+        var a=new THREE.Group();a.position.set(side*6.0,17.6,0);
+        var sh=sph(2.6,mRed);a.add(sh);
+        var sl=new THREE.Mesh(new THREE.CylinderGeometry(2.1,1.7,5,20),mRed);sl.position.y=-3.2;a.add(sl);
+        var glo=sph(2.15,mGlove);glo.position.y=-6.6;a.add(glo);
+        var thm=sph(1.0,mGlove);thm.position.set(0,-5.9,1.7);a.add(thm);   /* thumb */
+        return a;
+      }
+      var armL=arm(-1),armR=arm(1);
+      g.add(armL,armR);
+      /* head: round face, stubble, sideburns, big nose, thick mustache, cap */
+      var headG=new THREE.Group();headG.position.set(0,22.5,0);g.add(headG);
+      var neck=new THREE.Mesh(new THREE.CylinderGeometry(1.8,2.0,2.5,16),mSkin);neck.position.y=-1.8;headG.add(neck);
+      var head=sph(4.6,mSkin);head.scale.set(1.08,1.0,1.05);headG.add(head);
+      var hairB=sph(4.4,mHair);hairB.scale.set(1.05,0.98,1.0);hairB.position.set(0,-0.4,-1.1);headG.add(hairB);
+      var sb1=sph(1.6,mHair);sb1.scale.set(0.7,1.2,0.9);sb1.position.set(-3.7,-1.4,1.4);headG.add(sb1);
+      var sb2=sph(1.6,mHair);sb2.scale.set(0.7,1.2,0.9);sb2.position.set(3.7,-1.4,1.4);headG.add(sb2);
+      var ear1=sph(1.35,mSkin);ear1.position.set(-4.6,0.2,-0.4);headG.add(ear1);
+      var ear2=sph(1.35,mSkin);ear2.position.set(4.6,0.2,-0.4);headG.add(ear2);
+      var stub=sph(3.9,mStubble);stub.scale.set(0.88,0.72,0.8);stub.position.set(0,-1.9,1.3);headG.add(stub);
+      var e1=sph(0.85,mDark);e1.scale.set(0.75,1.2,0.65);e1.position.set(-1.7,1.6,4.4);headG.add(e1);
+      var e2=sph(0.85,mDark);e2.scale.set(0.75,1.2,0.65);e2.position.set(1.7,1.6,4.4);headG.add(e2);
+      var eb1=sph(1.15,mHair);eb1.scale.set(1.5,0.45,0.5);eb1.position.set(-1.8,2.9,4.1);eb1.rotation.z=-0.25;headG.add(eb1);
+      var eb2=sph(1.15,mHair);eb2.scale.set(1.5,0.45,0.5);eb2.position.set(1.8,2.9,4.1);eb2.rotation.z=0.25;headG.add(eb2);
+      var nose=sph(2.2,mSkin);nose.position.set(0,-0.9,4.9);headG.add(nose);
+      var mu1=sph(1.9,mMust);mu1.scale.set(1.25,0.75,0.6);mu1.position.set(-1.5,-2.9,3.9);mu1.rotation.z=0.25;headG.add(mu1);
+      var mu2=sph(1.9,mMust);mu2.scale.set(1.25,0.75,0.6);mu2.position.set(1.5,-2.9,3.9);mu2.rotation.z=-0.25;headG.add(mu2);
+      /* red cap: dome + band + forward brim + white emblem disc */
+      var cap=sph(4.9,mRed);cap.scale.set(1.06,0.78,1.08);cap.position.set(0,2.9,-0.4);headG.add(cap);
+      var band=new THREE.Mesh(new THREE.TorusGeometry(4.55,0.75,12,32),mRed);
+      band.rotation.x=Math.PI/2;band.scale.set(1.06,1.08,1);band.position.set(0,2.2,-0.4);headG.add(band);
+      var brim=sph(3.5,mRed);brim.scale.set(1.0,0.3,0.85);brim.position.set(0,0.4,4.6);headG.add(brim);
+      var embl=sph(1.15,mGlove);embl.scale.set(1,1,0.45);embl.position.set(0,3.4,5.6);headG.add(embl);
+      /* hammer (parented to the right arm so the swing animates the arm) */
+      var ham=new THREE.Group();
+      var h1=new THREE.Mesh(new THREE.CylinderGeometry(0.9,1.1,16,14),mat(0x8f5a26));h1.position.y=8;ham.add(h1);
+      var hCol=new THREE.Mesh(new THREE.CylinderGeometry(1.9,1.9,1.8,14),mat(0x666d78,{metalness:0.6,roughness:0.35}));hCol.position.y=15.5;ham.add(hCol);
+      var hHead=sph(4.4,mat(0x77808e,{metalness:0.65,roughness:0.3}));hHead.scale.set(1.55,1.0,1.3);hHead.position.y=17.6;ham.add(hHead);
+      ham.position.set(0,-5,0);ham.visible=false;
+      armR.add(ham);
+      g.userData={legL:legL,legR:legR,armL:armL,armR:armR,hammer:ham};
+      return g;
+    }
+    /* ---------- DONKEY KONG (high-poly giant ape) ---------- */
+    function buildDK(){
+      var g=new THREE.Group();
+      var mFur=mat(0x8a5a2b),mFurD=mat(0x6f4520),mFurL=mat(0xa9743c);
+      var mTan=mat(0xe8c48a),mTanD=mat(0xd4a06a);
+      var mDark=mat(0x181820),mWhite=mat(0xf2f2f2);
+      var mBelt=mat(0x8f1d2e,{roughness:0.55});
+      var mGold=mat(0xf1c40f,{metalness:0.5,roughness:0.35});
+      function sph(r,m,seg){return new THREE.Mesh(new THREE.SphereGeometry(r,seg||32,seg||32),m);}
+      /* legs: thick gorilla thighs + big flat feet, pivoting at the hips
+         so the climb/stomp leg swings look right */
+      function leg(side){
+        var a=new THREE.Group();a.position.set(side*7.5,13,0);
+        var hip=sph(5.4,mFurD);a.add(hip);
+        var th=new THREE.Mesh(new THREE.CylinderGeometry(4.4,3.6,9,24),mFurD);th.position.y=-5.5;a.add(th);
+        var shin=new THREE.Mesh(new THREE.CylinderGeometry(3.5,3.1,7,24),mFur);shin.position.y=-12;a.add(shin);
+        var foot=sph(4.8,mFurD);foot.scale.set(0.95,0.55,1.45);foot.position.set(0,-14.5,2);a.add(foot);
+        var t1=sph(1.2,mTanD);t1.position.set(1.8,-14.8,4.4);a.add(t1);
+        var t2=sph(1.2,mTanD);t2.position.set(-1.8,-14.8,4.4);a.add(t2);
+        return a;
+      }
+      var legL=leg(-1),legR=leg(1);
+      g.add(legL,legR);
+      /* body: massive barrel-chested gorilla torso. Group origin is at the
+         feet so the stomp-squash compresses him downward like a real ape. */
+      var body=new THREE.Group();g.add(body);
+      var hips=sph(9.5,mFurD);hips.scale.set(1.35,0.9,1.0);hips.position.y=14;body.add(hips);
+      var torso=sph(11.5,mFur);torso.scale.set(1.28,1.12,0.82);torso.position.y=22;body.add(torso);
+      var back=sph(8.5,mFurL);back.scale.set(1.15,0.95,0.7);back.position.set(0,24.5,-4.5);body.add(back);
+      var shoulderM=sph(12,mFur);shoulderM.scale.set(1.42,0.55,0.75);shoulderM.position.y=27.5;body.add(shoulderM);
+      var chest=sph(7.5,mTan);chest.scale.set(1.0,1.05,0.6);chest.position.set(0,21,6.8);body.add(chest);
+      var belly=sph(5.5,mTanD);belly.scale.set(1.0,1.15,0.55);belly.position.set(0,14,6.6);body.add(belly);
+      var belt=new THREE.Mesh(new THREE.TorusGeometry(9.8,1.6,14,40),mBelt);
+      belt.rotation.x=Math.PI/2;belt.scale.set(1.3,0.85,1);belt.position.y=11.5;body.add(belt);
+      var buckle=sph(1.9,mGold);buckle.scale.set(0.8,0.9,0.5);buckle.position.set(0,11.5,12.4);body.add(buckle);
+      /* head: big gorilla skull with a flat tan face, snout, frowning mouth */
+      var headG=new THREE.Group();headG.position.set(0,37,0);body.add(headG);
+      var skull=sph(9.5,mFur);skull.scale.set(1.15,1.0,0.95);headG.add(skull);
+      var browR=sph(6.5,mFurD);browR.scale.set(1.15,0.5,0.55);browR.position.set(0,4.5,5);headG.add(browR);
+      var face=sph(6.8,mTan);face.scale.set(0.95,0.95,0.62);face.position.set(0,-0.5,5.4);headG.add(face);
+      var snout=sph(4.6,mTanD);snout.scale.set(1.0,0.8,0.75);snout.position.set(0,-3.5,7.4);headG.add(snout);
+      var nr1=sph(0.9,mDark);nr1.position.set(-1.8,-3.9,9.3);headG.add(nr1);
+      var nr2=sph(0.9,mDark);nr2.position.set(1.8,-3.9,9.3);headG.add(nr2);
+      var mouth=sph(3.4,mDark);mouth.scale.set(1.25,0.55,0.5);mouth.position.set(0,-5.6,7.6);headG.add(mouth);
+      var te1=sph(1.7,mWhite);te1.scale.set(1,0.7,0.4);te1.position.set(-1.7,-5.6,9.0);headG.add(te1);
+      var te2=sph(1.7,mWhite);te2.scale.set(1,0.7,0.4);te2.position.set(1.7,-5.6,9.0);headG.add(te2);
+      var e1=sph(2.1,mWhite);e1.position.set(-3.4,2.2,6.4);headG.add(e1);
+      var e2=sph(2.1,mWhite);e2.position.set(3.4,2.2,6.4);headG.add(e2);
+      var pu1=sph(1.0,mDark);pu1.position.set(-3.2,2.0,8.1);headG.add(pu1);
+      var pu2=sph(1.0,mDark);pu2.position.set(3.2,2.0,8.1);headG.add(pu2);
+      var bb1=sph(2.4,mFurD);bb1.scale.set(1.4,0.35,0.5);bb1.position.set(-3.4,4.6,7.4);bb1.rotation.z=-0.4;headG.add(bb1);
+      var bb2=sph(2.4,mFurD);bb2.scale.set(1.4,0.35,0.5);bb2.position.set(3.4,4.6,7.4);bb2.rotation.z=0.4;headG.add(bb2);
+      var ea1=sph(2.6,mFurD);ea1.position.set(-9,1,-0.5);headG.add(ea1);
+      var ea2=sph(2.6,mFurD);ea2.position.set(9,1,-0.5);headG.add(ea2);
+      /* arms: long knuckle-walking arms with big tan hands, pivoting at the shoulders */
+      function arm(side){
+        var a=new THREE.Group();a.position.set(side*13.5,26.5,0);
+        var sh=sph(5.6,mFur);a.add(sh);
+        var up=new THREE.Mesh(new THREE.CylinderGeometry(4.6,3.7,9,24),mFur);up.position.y=-5.5;a.add(up);
+        var el=sph(3.9,mFurD);el.position.y=-10.5;a.add(el);
+        var fo=new THREE.Mesh(new THREE.CylinderGeometry(3.6,3.2,7,24),mFur);fo.position.y=-15;a.add(fo);
+        var hand=sph(4.6,mTan);hand.position.y=-19.5;a.add(hand);
+        var k1=sph(1.5,mTanD);k1.position.set(side*1.6,-17,4.2);a.add(k1);
+        var k2=sph(1.5,mTanD);k2.position.set(-side*1.6,-17,4.2);a.add(k2);
+        return a;
+      }
+      var armL=arm(-1),armR=arm(1);
+      g.add(armL,armR);
+      /* intermission hammer (climbs ladders with it) */
+      var dkHam=new THREE.Group();
+      var dh1=new THREE.Mesh(new THREE.CylinderGeometry(1.2,1.2,14,10),mat(0x8f5a26));dh1.position.y=5;
+      var dh2=new THREE.Mesh(new THREE.SphereGeometry(5.2,20,16),mat(0x666d78,{metalness:0.6,roughness:0.35}));
+      dh2.scale.set(1.35,0.62,1.15);dh2.position.y=14;
+      dkHam.add(dh1,dh2);dkHam.position.set(0,-13,2);dkHam.visible=false;
+      armR.add(dkHam);
+      g.userData={armL:armL,armR:armR,body:body,dkHam:dkHam,legL:legL,legR:legR};
+      return g;
+    }
+    /* ---------- PAULINE (feet at local origin) ---------- */
+    function buildPauline(){
+      var g=new THREE.Group();
+      var mDress=mat(0xe75480,{roughness:0.6});
+      var mSkin=mat(0xffd9b0);
+      var mHair=mat(0xf2c14e);                 /* blonde */
+      var mWhite=mat(0xf5f5f5,{roughness:0.5});
+      var mDark=mat(0x2a1a12);
+      /* shoes + legs peeking below the skirt */
+      function leg(side){
+        var a=new THREE.Group();a.position.set(side*1.9,0,0);
+        var sh=new THREE.Mesh(new THREE.BoxGeometry(3.2,2,3.8),mWhite);sh.position.set(0.4,1,0.4);a.add(sh);
+        var lg=new THREE.Mesh(new THREE.CylinderGeometry(1.2,1.2,6,8),mSkin);lg.position.y=5;a.add(lg);
+        return a;
+      }
+      g.add(leg(-1),leg(1));
+      /* flared skirt - wide at the hem this time - plus a white hem stripe */
+      var skirt=new THREE.Mesh(new THREE.CylinderGeometry(3.4,7.8,9,16),mDress);
+      skirt.position.y=10.5;g.add(skirt);
+      var hem=new THREE.Mesh(new THREE.CylinderGeometry(7.3,7.9,1.5,16),mWhite);
+      hem.position.y=6.6;g.add(hem);
+      /* bodice + white collar + neck */
+      var bodice=new THREE.Mesh(new THREE.CylinderGeometry(3.6,3.2,6,12),mDress);
+      bodice.position.y=16.8;g.add(bodice);
+      var collar=new THREE.Mesh(new THREE.CylinderGeometry(3.5,3.9,1.2,12),mWhite);
+      collar.position.y=19.9;g.add(collar);
+      var neck=new THREE.Mesh(new THREE.CylinderGeometry(1.2,1.2,2.4,8),mSkin);
+      neck.position.y=20.8;g.add(neck);
+      /* head with a face */
+      var head=new THREE.Mesh(new THREE.SphereGeometry(4.4,14,12),mSkin);
+      head.position.y=24.6;g.add(head);
+      var e1=new THREE.Mesh(new THREE.SphereGeometry(0.55,6,6),mDark);
+      e1.position.set(1.3,25.2,4.1);g.add(e1);
+      var e2=e1.clone();e2.position.x=-1.3;g.add(e2);
+      var mouth=new THREE.Mesh(new THREE.BoxGeometry(1.6,0.7,0.6),mat(0xc0392b));
+      mouth.position.set(0,23.1,4.3);g.add(mouth);
+      /* blonde hair: cap over the top and back (kept clear of the face),
+         side locks framing her face, and a bun on top */
+      var hair=new THREE.Mesh(new THREE.SphereGeometry(4.6,12,10),mHair);
+      hair.position.set(0,25.6,-1.6);g.add(hair);
+      function lock(side){
+        var lk=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.5,5.5,8),mHair);
+        lk.position.set(side*4.3,22.4,1.9);g.add(lk);
+      }
+      lock(-1);lock(1);
+      var bun=new THREE.Mesh(new THREE.SphereGeometry(2.3,10,8),mHair);
+      bun.position.set(0,29.8,-1.6);g.add(bun);
+      /* arms: dress sleeve + skin forearm + hand. The RIGHT arm is the one
+         the game animates (waves when stranded, flails when carried). */
+      function armGroup(side,angle){
+        var a=new THREE.Group();a.position.set(side*4.6,19.2,0);
+        var sleeve=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.4,3,8),mDress);
+        sleeve.position.y=-1.2;a.add(sleeve);
+        var fa=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.1,3.4,8),mSkin);
+        fa.position.y=-3.8;a.add(fa);
+        var hand=new THREE.Mesh(new THREE.SphereGeometry(1.25,8,8),mSkin);
+        hand.position.y=-6;a.add(hand);
+        a.rotation.z=angle;
+        return a;
+      }
+      var armL=armGroup(-1,-0.3),armR=armGroup(1,0.3);
+      g.add(armL,armR);
+      g.userData={arm:armR,armL:armL,dress:skirt};
+      return g;
+    }
+    /* ---------- ROLLING MONKEY (high-poly zoo escapee) ----------
+       Built facing +z (like Mario/DK) so the walk-direction turn reads
+       correctly: rotation.y=+PI/2 faces screen-right, -PI/2 faces left. */
+    function buildMonkey(){
+      var g=new THREE.Group();
+      var mFur=mat(0x9c642f),mFurD=mat(0x7c4c22),mTan=mat(0xe8c48a),mTanD=mat(0xd29a5e);
+      var mDark=mat(0x181820),mWhite=mat(0xf2f2f2);
+      var mCollar=mat(0xd42b3a,{roughness:0.5}),mGold=mat(0xf1c40f,{metalness:0.5,roughness:0.35});
+      function sph(r,m,seg){return new THREE.Mesh(new THREE.SphereGeometry(r,seg||32,seg||32),m);}
+      /* quadruped body: long furry torso, darker rump, tan belly (feet at y~0) */
+      var body=sph(5.2,mFur);body.position.set(0,9.2,-0.4);body.scale.set(0.98,0.88,1.28);g.add(body);
+      var rump=sph(3.4,mFurD);rump.position.set(0,9.8,-5.8);rump.scale.set(1,0.9,1);g.add(rump);
+      var belly=sph(3.6,mTan);belly.position.set(0,6.8,1.0);belly.scale.set(0.7,0.62,1.05);g.add(belly);
+      /* four jointed legs, flat feet reaching the ground */
+      function limb(x,z){
+        var a=new THREE.Group();a.position.set(x,7.6,z);
+        var up=new THREE.Mesh(new THREE.CylinderGeometry(1.3,1.05,5.6,14),mFur);up.position.y=-2.8;a.add(up);
+        var ft=sph(1.7,mTanD,20);ft.position.set(0,-6.6,0.8);ft.scale.set(0.8,0.55,1.4);a.add(ft);
+        return a;
+      }
+      var legL=limb(-2.9,3.4),legR=limb(2.9,-3.6);   /* diagonal pair: front-left + rear-right */
+      var legFR=limb(2.9,3.4),legBL=limb(-2.9,-3.6);
+      g.add(legL,legR,legFR,legBL);
+      /* cute tail: smooth tube curving up from the rump and curling at the tip */
+      var tail=new THREE.Group();tail.position.set(0,10.2,-6.4);g.add(tail);
+      var tCurve=new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0,-0.6,-0.8),new THREE.Vector3(0,-1.9,-3.4),
+        new THREE.Vector3(0,0.1,-6.4),new THREE.Vector3(0,3.2,-7.4),
+        new THREE.Vector3(0,6.1,-5.6),new THREE.Vector3(0,7.3,-3.4),
+        new THREE.Vector3(0,6.2,-1.8)
+      ]);
+      tail.add(new THREE.Mesh(new THREE.TubeGeometry(tCurve,32,0.55,12,false),mFur));
+      var tip=sph(0.95,mTanD,20);tip.position.set(0,6.2,-1.8);tail.add(tip);
+      /* head: big friendly face looking forward (+z) */
+      var head=new THREE.Group();head.position.set(0,13.6,5.4);g.add(head);
+      var skull=sph(4.0,mFur);skull.scale.set(1,1.02,0.95);head.add(skull);
+      /* hair tuft on top-back of the skull */
+      var t1=sph(1.15,mFurD,20);t1.position.set(0,3.3,-1.5);head.add(t1);
+      var t2=sph(0.8,mFurD,16);t2.position.set(1.0,3.4,-0.6);head.add(t2);
+      var t3=t2.clone();t3.position.x=-1.0;head.add(t3);
+      /* rounded ears with tan inner ears */
+      var ear1=sph(1.5,mFur,20);ear1.position.set(-3.7,0.9,-0.5);head.add(ear1);
+      var ear2=ear1.clone();ear2.position.x=3.7;head.add(ear2);
+      var iear1=sph(0.85,mTan,16);iear1.position.set(-4.15,0.9,0.1);head.add(iear1);
+      var iear2=iear1.clone();iear2.position.x=4.15;head.add(iear2);
+      /* tan face with big cute eyes (white + pupil + glint) */
+      var face=sph(2.7,mTan);face.position.set(0,-0.7,1.7);face.scale.set(1,1.05,0.78);head.add(face);
+      var ew1=sph(1.05,mWhite,20);ew1.position.set(-1.55,0.75,3.3);ew1.scale.set(1,1.15,0.5);head.add(ew1);
+      var ew2=ew1.clone();ew2.position.x=1.55;head.add(ew2);
+      var ep1=sph(0.55,mDark,14);ep1.position.set(-1.55,0.6,3.85);head.add(ep1);
+      var ep2=ep1.clone();ep2.position.x=1.55;head.add(ep2);
+      var eh1=sph(0.2,mWhite,8);eh1.position.set(-1.3,0.95,4.0);head.add(eh1);
+      var eh2=eh1.clone();eh2.position.x=1.3;head.add(eh2);
+      /* muzzle with nostrils and a little smile */
+      var muz=sph(1.7,mTan);muz.position.set(0,-1.8,3.0);muz.scale.set(1.15,0.85,0.8);head.add(muz);
+      var no1=sph(0.3,mDark,10);no1.position.set(-0.45,-1.2,4.25);head.add(no1);
+      var no2=no1.clone();no2.position.x=0.45;head.add(no2);
+      var smile=new THREE.Mesh(new THREE.TorusGeometry(0.85,0.16,8,18,Math.PI),mDark);
+      smile.position.set(0,-2.55,4.25);smile.rotation.z=Math.PI;head.add(smile);
+      /* zoo escapee: red collar around the neck with a little gold tag */
+      var collar=new THREE.Mesh(new THREE.TorusGeometry(2.3,0.42,10,26),mCollar);
+      collar.position.set(0,-2.2,-1.8);collar.rotation.x=Math.PI/2+0.4;head.add(collar);
+      var tag=sph(0.62,mGold,14);tag.position.set(0,-3.1,0.6);head.add(tag);
+      g.userData={legL:legL,legR:legR,legFR:legFR,legBL:legBL,tail:tail,head:head};
+      return g;
+    }
+    /* ---------- BARREL ---------- */
+    var woodTex=(function(){
+      var cv=document.createElement('canvas');cv.width=64;cv.height=32;
+      var g=cv.getContext('2d');
+      g.fillStyle='#b5722f';g.fillRect(0,0,64,32);
+      g.fillStyle='#8f5522';
+      for(var i=0;i<8;i++)g.fillRect(i*8+2,0,4,32);
+      g.fillStyle='#5b3815';g.fillRect(0,4,64,3);g.fillRect(0,25,64,3);
+      return new THREE.CanvasTexture(cv);
+    })();
+    var barrelPool=[];
+    for(var bi=0;bi<14;bi++){
+      (function(){
+        var grp=new THREE.Group();
+        var geo=new THREE.CylinderGeometry(BR,BR,BR*1.07,18);
+        geo.rotateX(Math.PI/2); /* axis toward camera so the face is visible */
+        var m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({map:woodTex,roughness:0.7,metalness:0.1}));
+        grp.userData.mat=m.material;
+        grp.add(m);grp.visible=false;
+        scene.add(grp);barrelPool.push(grp);
+      })();
+    }
+    /* blue barrel: SAME wood as the normal barrels (so it reads as a rolling
+       barrel) but with a flammable-liquid sign printed on its face - a red
+       diamond with a black flame in the middle - so you can watch it rotate */
+    var blueTex=(function(){
+      var cv=document.createElement('canvas');cv.width=128;cv.height=128;
+      var g2=cv.getContext('2d');
+      /* wood: base, plank stripes, two metal bands (same colors as woodTex) */
+      g2.fillStyle='#b5722f';g2.fillRect(0,0,128,128);
+      g2.fillStyle='#8f5522';
+      for(var i2=0;i2<8;i2++)g2.fillRect(i2*16+4,0,8,128);
+      g2.fillStyle='#5b3815';g2.fillRect(0,10,128,6);g2.fillRect(0,112,128,6);
+      /* flammable liquid sign: red diamond, black flame in the middle */
+      g2.fillStyle='#d40000';
+      g2.beginPath();
+      g2.moveTo(64,26);g2.lineTo(102,64);g2.lineTo(64,102);g2.lineTo(26,64);
+      g2.closePath();g2.fill();
+      g2.fillStyle='#000000';
+      (function(){
+        var s=26,cx=64,cy=66;
+        g2.save();g2.translate(cx,cy);
+        g2.beginPath();
+        g2.moveTo(0,-s);
+        g2.bezierCurveTo(s*0.55,-s*0.45,s*0.62,-s*0.05,s*0.38,s*0.32);
+        g2.bezierCurveTo(s*0.55,s*0.50,s*0.45,s*0.78,0,s*0.85);
+        g2.bezierCurveTo(-s*0.45,s*0.78,-s*0.55,s*0.50,-s*0.38,s*0.32);
+        g2.bezierCurveTo(-s*0.62,-s*0.05,-s*0.55,-s*0.45,0,-s);
+        g2.closePath();g2.fill();
+        g2.restore();
+      })();
+      return new THREE.CanvasTexture(cv);
+    })();
+    var blueMat=new THREE.MeshStandardMaterial({map:blueTex,roughness:0.7,metalness:0.1});
+    var monkeyPool=[];
+    for(var mi=0;mi<3;mi++){
+      var mo=buildMonkey();mo.visible=false;scene.add(mo);monkeyPool.push(mo);
+    }
+    var mario=buildMario();
+    mario.position.copy(to3d(132,gy(GIRDS[0],132)));
+    mario.rotation.y=0;
+    scene.add(mario);
+    var dk=buildDK();
+    dk.position.copy(to3d(DKPOS.x,gy(GIRDS[5],DKPOS.x)));
+    scene.add(dk);
+    /* ---------- SOWITH CAMEL (WWI biplane, background ambience) ----------
+       Matched to the reference photo: big white rotary cowling + white
+       4-blade prop, olive fuselage with "N" / roundel / "F6034" markings,
+       large ribbed olive top wing over a small bottom wing, tan N-struts,
+       red-white-blue striped rudder, single spoked wheel with white hub.
+       Built facing -x (nose left) so it flies right to left like the photo. */
+    function buildBiplane(){
+      var g=new THREE.Group();
+      var mOlive=mat(0x6b6046,{roughness:0.85});
+      var mOliveD=mat(0x4f452f,{roughness:0.9});
+      var mWhite=mat(0xe8e6df,{roughness:0.5});
+      var mSilver=mat(0xc9c7bd,{roughness:0.4,metalness:0.5});
+      var mTan=mat(0xb5722f,{roughness:0.7});
+      var mDark=mat(0x241f1a,{roughness:0.9});
+      var mRed=mat(0xb3282d,{roughness:0.6});
+      var mBlue=mat(0x2b3f7e,{roughness:0.6});
+      var mTire=mat(0x262626,{roughness:0.95});
+      function add(geo,m,x,y,z){
+        var o=new THREE.Mesh(geo,m);
+        o.position.set(x,y,z);g.add(o);return o;
+      }
+      /* fuselage: olive, nose toward -x */
+      add(new THREE.CylinderGeometry(3.1,3.1,22,20).rotateZ(Math.PI/2),mOlive,1,0,0);
+      /* big white rotary engine cowling at the nose + silver rim */
+      add(new THREE.CylinderGeometry(4.7,4.1,6.5,24).rotateZ(Math.PI/2),mWhite,-8,0,0);
+      add(new THREE.CylinderGeometry(4.75,4.75,0.5,24).rotateZ(Math.PI/2),mSilver,-11.1,0,0);
+      /* white 4-blade propeller + hub */
+      var prop=new THREE.Group();
+      var bladeGeo=new THREE.BoxGeometry(0.5,16,1.2);
+      for(var b4i=0;b4i<4;b4i++){
+        var holder=new THREE.Group();
+        holder.add(new THREE.Mesh(bladeGeo,mWhite));
+        holder.rotation.x=b4i*(Math.PI/2);
+        prop.add(holder);
+      }
+      prop.add(new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.1,2.2,12).rotateZ(Math.PI/2),mSilver));
+      prop.position.set(-13.4,0,0);
+      g.add(prop);
+      /* ---- markings on the camera-facing side (+z): N + roundel + F6034 ---- */
+      var mz=3.2;
+      function mbar(x,y,w,h){add(new THREE.BoxGeometry(w,h,0.16),mWhite,x,y,mz);}
+      var u=0.36;
+      (function(ox){                                  /* "N" */
+        mbar(ox,0,0.34,5*u);
+        mbar(ox+2.1*u,0,0.34,5*u);
+        var d=new THREE.Mesh(new THREE.BoxGeometry(3.0*u,0.34,0.16),mWhite);
+        d.position.set(ox+1.05*u,0,mz);d.rotation.z=-0.6;g.add(d);
+      })(-4.6);
+      (function(cx){                                  /* roundel (blue / white / red) */
+        add(new THREE.CylinderGeometry(1.75,1.75,0.2,20).rotateX(Math.PI/2),mBlue,cx,0,mz);
+        add(new THREE.CylinderGeometry(1.2,1.2,0.24,20).rotateX(Math.PI/2),mWhite,cx,0,mz+0.015);
+        add(new THREE.CylinderGeometry(0.62,0.62,0.28,16).rotateX(Math.PI/2),mRed,cx,0,mz+0.03);
+      })(0.4);
+      (function(ox){                                  /* "F6034" white block letters */
+        var L=[
+          [[0,0,0.8,5],[0,4.2,2.4,0.8],[0,2.1,1.9,0.8]],
+          [[0,0,0.8,5],[0,4.2,2.6,0.8],[0,2.1,2.6,0.8],[0,0,2.6,0.8],[1.8,0,0.8,2.9]],
+          [[0,0,0.8,5],[1.8,0,0.8,5],[0,4.2,2.6,0.8],[0,0,2.6,0.8]],
+          [[0,4.2,2.6,0.8],[0,2.1,2.1,0.8],[0,0,2.6,0.8],[1.8,0,0.8,5]],
+          [[0,0,0.8,3.1],[0,1.7,2.6,0.8],[1.8,0,0.8,5]]
+        ];
+        for(var i=0;i<L.length;i++){
+          var ch=L[i];
+          for(var b=0;b<ch.length;b++){
+            mbar(ox+ch[b][0]*u,(ch[b][1]-2.5)*u,ch[b][2]*u,ch[b][3]*u);
+          }
+          ox+=3.5;
+        }
+      })(4.4);
+      /* TOP wing: large ribbed olive fabric wing + darker center section */
+      add(new THREE.BoxGeometry(16,1.4,32),mOlive,-0.5,6.5,0);
+      add(new THREE.BoxGeometry(16.4,1.7,4.4),mOliveD,-0.5,6.5,0);
+      for(var rbi=0;rbi<6;rbi++){
+        add(new THREE.BoxGeometry(15.4,0.18,0.5),mOliveD,-0.5,7.42,-12+rbi*4.8);
+      }
+      /* BOTTOM wing: much smaller */
+      add(new THREE.BoxGeometry(10,1.2,16),mOlive,0.5,-4.8,0);
+      /* roundels on the wings (blue / white / red) */
+      function roundel(x,y,z){
+        add(new THREE.CylinderGeometry(1.8,1.8,0.18,20),mBlue,x,y,z);
+        add(new THREE.CylinderGeometry(1.25,1.25,0.22,20),mWhite,x,y+0.015,z);
+        add(new THREE.CylinderGeometry(0.65,0.65,0.26,16),mRed,x,y+0.03,z);
+      }
+      roundel(1.5,7.45,8.5);roundel(1.5,7.45,-8.5);
+      roundel(-1,-5.55,4);roundel(-1,-5.55,-4);
+      /* tan N-struts between fuselage and wings */
+      var strutGeo=new THREE.CylinderGeometry(0.28,0.28,1,8);
+      function stick(x,y,z,h){var o=new THREE.Mesh(strutGeo,mTan);o.scale.y=h;o.position.set(x,y,z);g.add(o);}
+      stick(-4,4.3,6.8,5.6);stick(-4,4.3,-6.8,5.6);
+      stick(3,4.3,6.8,5.6);stick(3,4.3,-6.8,5.6);
+      stick(0.5,-2.6,3.4,4.6);stick(0.5,-2.6,-3.4,4.6);
+      stick(4.5,-2.6,3.4,4.6);stick(4.5,-2.6,-3.4,4.6);
+      /* rudder: red / white / blue vertical stripes (like the reference) */
+      add(new THREE.BoxGeometry(1.7,7.5,1),mRed,10.6,3,0);
+      add(new THREE.BoxGeometry(1.7,7.5,1),mWhite,12.3,3,0);
+      add(new THREE.BoxGeometry(1.7,7.5,1),mBlue,14.0,3,0);
+      /* horizontal stabilizer + tail post */
+      add(new THREE.BoxGeometry(4.6,0.9,9.5),mOlive,10.8,-0.6,0);
+      add(new THREE.BoxGeometry(3,2,1),mOlive,10.6,-0.5,0);
+      /* cockpit: dark open canopy on the spine */
+      add(new THREE.BoxGeometry(4.2,1.5,2.7),mDark,-1.5,3.0,0);
+      /* single spoked main wheel, white hub */
+      var wheel=new THREE.Group();
+      var tire=new THREE.Mesh(new THREE.CylinderGeometry(3.3,3.3,1.1,22),mTire);
+      tire.rotation.x=Math.PI/2;wheel.add(tire);
+      var hub=new THREE.Mesh(new THREE.CylinderGeometry(1.15,1.15,1.3,14),mWhite);
+      hub.rotation.x=Math.PI/2;wheel.add(hub);
+      for(var wi2=0;wi2<4;wi2++){
+        var sp2=new THREE.Mesh(new THREE.BoxGeometry(0.4,6,0.3),mWhite);
+        sp2.rotation.z=wi2*(Math.PI/4);
+        wheel.add(sp2);
+      }
+      wheel.position.set(0,-9.6,0);
+      g.add(wheel);
+      return {grp:g,prop:prop};
+    }
+    var planeDefs=[
+      {y:40,sp:60,delay:0,  s:1,    ph:0},
+      {y:66,sp:46,delay:1.6,s:0.72, ph:2.4}
+    ];
+    var planeRefs=[];
+    for(var pbi=0;pbi<planeDefs.length;pbi++){
+      var bp=buildBiplane();
+      bp.grp.scale.set(planeDefs[pbi].s,planeDefs[pbi].s,planeDefs[pbi].s);
+      bp.grp.visible=false;
+      scene.add(bp.grp);
+      planeRefs.push({grp:bp.grp,prop:bp.prop,def:planeDefs[pbi]});
+    }
+    D3.planes=planeRefs;
+    /* ---------- BARREL STACKS (to DK's left, like the 1981 original) ---------- */
+    var stackGeo=new THREE.CylinderGeometry(BR,BR,BR*1.07,18);stackGeo.rotateX(Math.PI/2);
+    var stackMat=new THREE.MeshStandardMaterial({map:woodTex,roughness:0.7,metalness:0.1});
+    for(var sti=0;sti<BARREL_STACKS.length;sti++){
+      (function(s){
+        var grp=new THREE.Group();
+        var rows=(s.n>=4)?3:2;
+        for(var r=0;r<rows;r++){
+          var per=(r===0)?2:1;
+          for(var q=0;q<per;q++){
+            var bm=new THREE.Mesh(stackGeo,stackMat);
+            bm.position.set((r===0)?(q===0?-(BR+0.5):(BR+0.5)):0,BR+BR*1.7*r,0);
+            grp.add(bm);
+          }
+        }
+        grp.position.copy(to3d(s.x,gy(GIRDS[5],s.x)));
+        scene.add(grp);
+      })(BARREL_STACKS[sti]);
+    }
+    /* the barrel DK holds in his hand while grabbing / rolling it out */
+    var dkBarrel=new THREE.Mesh(stackGeo,stackMat);
+    dkBarrel.visible=false;scene.add(dkBarrel);
+    var pauline=buildPauline();
+    pauline.position.copy(to3d(PAULINE.x,gy(GIRDS[6],PAULINE.x)));
+    scene.add(pauline);
+    D3.mario=mario;D3.dk=dk;D3.pauline=pauline;
+    D3.barrelPool=barrelPool;D3.monkeyPool=monkeyPool;D3.dkBarrel=dkBarrel;
+    D3.blueMat=blueMat;
+  }catch(e){
+    c3d.style.display='none';
+    D3=null;
+  }
+})();
+/* ===== GAME FLOW ===== */
+/* Spawn the monkeys for the CURRENT level (count & behavior from
+   levelParams: L2 = 2 paces, L3 = climbers, L4 = banana skins, L5 = 3).
+   Idempotent: always starts from an empty array. */
+function spawnMonkeys(){
+  monkeys.length=0;
+  var p=levelParams();
+  for(var i=0;i<p.mk;i++){
+    var f=(i%2===0)?2:3;
+    var mg=GIRDS[f];
+    monkeys.push({floor:f,x:(mg.dir>0)?mg.x1+14:mg.x2-14,
+      y:gy(mg,(mg.dir>0)?mg.x1+14:mg.x2-14),
+      dead:false,rT:2+Math.random()*2,ph:Math.random()*6,
+      climb:null,climbDir:1,sy:null,
+      banT:4+Math.random()*4,dropT:3+Math.random()*3});
+  }
+}
+function resetPositions(){
+  P={x:132,floor:0,face:1,mode:'ground',y:gy(GIRDS[0],132),jumpY:0,vy:0,fallY:0,
+     climb:null,climbDir:0,walk:0,deadT:0,moving:false,popT:0,topY0:0,topFloor:0,
+     slipT:0,slipDir:1,hurtT:0};
+  hearts=MAX_HEARTS;   /* every fresh stage / respawn: full hearts (2) */
+  marioBack=false;
+  barrels=[];monkeys=[];bananas.length=0;fires.length=0;
+  spawnMonkeys();
+  hammerHeld=false;for(var hri=0;hri<HAMS.length;hri++)HAMS[hri].taken=false;dkThrowT=0;dkSpawnT=1.6;oilFx=0;
+  dkAnim='idle';dkAnimT=0;dkHold.visible=false;
+  scT=0;scStomps=0;scFlags.grab=false;
+  particles.length=0;floats.length=0;
+  fires.length=0;bananas.length=0;blueNext=true;  /* every stage: DK's first barrel is the blue one */
+}
+function resetGame(){
+  score=0;lives=3;level=1;cycles=0;extraAt=10000;newHigh=false;
+  resetPositions();
+  paused=false;
+  startIntro();   /* DK carries Pauline to the top of the building, then the level begins */
+  var pb=document.getElementById('pauseBtn');pb.textContent='⏸';pb.className='';
+  updateLives();
+  sfx.gameStart();
+}
+function startFromTitle(){
+  if(state!=='TITLE')return;
+  enterFullscreen();
+  resetGame();
+}
+function levelClear(){
+  if(level>=5){startWin();return;}   /* FINAL STAGE: save Pauline & knock out DK */
+  startStageClear();   /* EVERY stage clear: DK grabs Pauline & stomps cutscene */
+}
+function startWin(){
+  state='WIN';stateT=0;winFx={land:false,j:false};
+  barrels.length=0;monkeys.length=0;bananas.length=0;fires.length=0;
+  dkSpawnT=999;oilFx=0;dkAnim='idle';dkHold.visible=false;
+  /* Mario stands down and celebrates (guarantees the victory pose, not a frozen jump) */
+  P.slipT=0;
+  P.hurtT=0;
+  P.mode='ground';P.jumpY=0;P.fallY=0;P.climb=null;P.popT=0;
+  P.y=gy(GIRDS[P.floor],P.x);P.walk=0;P.moving=false;
+  hammerHeld=false;jumpQueued=false;
+  musicMode('off');
+  sfx.clear();
+}
+/* --- STAGE 1 CLEAR CUTSCENE: DK grabs Pauline, carries her to the top, stomps x3 --- */
+function startStageClear(){
+  addScore(3000,PAULINE.x,PAULINE.y-50);
+  state='STAGECLEAR';scT=0;scStomps=0;scFlags.grab=false;
+  dkAnim='idle';dkSpawnT=999;dkHold.visible=false;   /* no new barrels roll off */
+  /* Mario stops dead and just watches the whole thing */
+  P.mode='ground';P.jumpY=0;P.fallY=0;P.climb=null;P.popT=0;
+  P.y=gy(GIRDS[6],P.x);P.face=1;P.walk=0;P.moving=false;
+  P.hurtT=0;
+  hammerHeld=false;jumpQueued=false;
+  sfx.clear();
+  sfx.dkAngry();
+}
+function scStomp(){
+  scStomps++;
+  triggerShake(10,0.45);              /* DK is HEAVY - the whole stage shudders */
+  sfx.stomp();
+  /* every stomp also jostles MARIO off TWO girders - he starts on Pauline's
+     (floor 6), so 3 stomps land him back at the very bottom: the next stage
+     means another full climb to save Pauline */
+  if(P.floor>0){
+    P.floor=Math.max(0,P.floor-2);
+    P.y=gy(GIRDS[P.floor],P.x);
+    spawnBurst(P.x,P.y-10,['#9aa3b5','#c9d1e0','#8b93a8'],10);   /* dust puff where he lands */
+  }
+  /* spread the still-rolling barrels across the remaining stomp landings */
+  var left=barrels.length,shakesLeft=4-scStomps;
+  var n=Math.min(left,Math.ceil(left/shakesLeft));
+  for(var i=0;i<n;i++){
+    spawnBurst(barrels[i].x,barrels[i].sy,['#c8893a','#8f5522','#ffd23e','#ffe9a0'],16);
+  }
+  if(n){barrels.splice(0,n);sfx.boom();}
+}
+function scFinish(){
+  if(level>=5){startWin();return;}   /* safety net: L5 always ends in the win cutscene */
+  if(level>=8){        /* all 4 stages done twice - intermission, then the next round */
+    startIntermission();
+    return;
+  }
+  level++;             /* next stage: L1-4 = stages 1-4, L5-8 = stages 1-4 again */
+  resetPositions();
+  startIntro();        /* intro cutscene (DK + Pauline up to the top), then the level begins */
+}
+function startIntermission(){
+  state='INTERM';stateT=0;
+  musicMode('off');
+  sfx.interm();
+}
+function skipInterm(){
+  if(state!=='INTERM')return;
+  nextCycle();
+}
+/* --- PRE-LEVEL INTRO CUTSCENE: DK carries Pauline to the top, jingle, bi-planes, GO --- */
+function startIntro(){
+  state='INTRO';introT=0;introFx={jingle:false};
+  musicMode('off');            /* stage music out - the jingle & engine carry the scene */
+  /* Mario watches from below; nothing else is on the field */
+  P.mode='ground';P.jumpY=0;P.fallY=0;P.climb=null;P.popT=0;
+  P.y=gy(GIRDS[P.floor],P.x);P.moving=false;
+  barrels.length=0;monkeys.length=0;bananas.length=0;fires.length=0;
+  dkAnim='idle';dkSpawnT=999;dkHold.visible=false;
+  hammerHeld=false;jumpQueued=false;
+}
+function skipIntro(){
+  if(state!=='INTRO')return;
+  beginLevel();
+}
+function beginLevel(){
+  state='PLAYING';
+  musicMode('play');
+  /* the intro cutscene clears the field - spawn the level's monkeys NOW so
+     every level (L2+) actually starts with its proper enemies */
+  spawnMonkeys();
+  /* startIntro() parks DK's throw timer for the cutscene (999) -
+     arm it again so barrels (and the blue one) roll right away */
+  dkSpawnT=Math.min(dkSpawnT,1.6);
+  dkAnim='idle';dkAnimT=0;dkHold.visible=false;
+  sfx.ready();
+}
+function nextCycle(){
+  cycles++;level=1;
+  resetPositions();
+  state='READY';stateT=2.4;
+  sfx.ready();
+}
+function toTitle(){
+  state='TITLE';titleT=0;
+  paused=false;
+  resetPositions();
+  var pb=document.getElementById('pauseBtn');pb.textContent='⏸';pb.className='';
+  musicMode('title');
+}
+function addScore(n,x,y){
+  score+=n;
+  if(x!==undefined)addFloat(x,y,'+'+n,'#ffd23e');
+  if(score>=extraAt){
+    extraAt+=10000;
+    lives++;updateLives();
+    sfx.extraLife();
+    addFloat(W/2,H/2,'EXTRA LIFE!','#ffd700');
+    triggerShake(6,0.4);
+    spawnBurst(W/2,H/2,['#ffd700','#ffffff'],24);
+  }
+  if(score>high){
+    high=score;newHigh=true;
+    try{localStorage.setItem('dk-high',String(high));}catch(e){}
+  }
+}
+/* ===== PLAYER ===== */
+function startClimb(L,dir){
+  P.mode='climb';P.climb=L;P.climbDir=dir;
+  P.x=L.x;hammerHeld=false;
+}
+function startJump(){
+  /* HOP, not a high jump: apex = vy^2/(2*800) = 233^2/1600 = 33.9px (~32px in
+     discrete integration) - just above the tallest enemy. A monkey's head is
+     ~19px above the girder, so the jump is safe iff jumpY>=19 while |dx|<13.
+     At 81.6px/s air speed the kill zone takes ~0.32s to cross and Mario
+     stays above the 19px line for ~0.39s, so a well-timed jump clears it - air speed is decoupled from walk speed (mv is the difficulty knob).
+     Floor for retuning: vy<~217 can't cover the zone at all, and below ~230
+     the timing window gets razor-thin. */
+  P.mode='jump';P.vy=233;P.jumpY=0;marioBack=false;
+  sfx.jump();
+}
+function startFall(){
+  P.mode='fall';P.vy=0;P.fallY=0;
+  hammerHeld=false;
+}
+function updatePlayer(dt){
+  var mv=74,cs=60,av=96;  /* Mario's difficulty knobs: mv = walk, cs = climb,
+                            av*0.85 = jump air speed (kept high so jumps stay fair) */
+  if(P.hurtT>0){P.hurtT-=dt;if(P.hurtT<0)P.hurtT=0;}  /* invulnerability/flash window after a hit */
+  /* banana slip: no control while slipping - Mario flails, slides a little,
+     and tumbles down a girder (a quick but costly delay) */
+  var slipping=P.slipT>0;
+  if(slipping){
+    P.slipT-=dt;
+    if(P.slipT<0)P.slipT=0;
+    if(P.mode==='ground')P.x+=P.slipDir*30*dt;
+  }
+  var wantX=slipping?0:((input.left?-1:0)+(input.right?1:0));
+  if(wantX){P.face=wantX;marioBack=false;}   /* walking again -> profile view returns */
+  P.moving=(wantX!==0&&P.mode==='ground')||(slipping&&P.mode==='ground');
+  if(P.mode==='ground'){
+    if(wantX)P.x+=wantX*mv*dt;
+    if(wantX)P.walk+=dt*11;
+    P.y=gy(GIRDS[P.floor],P.x);
+    var g=GIRDS[P.floor];
+    if(P.x<g.x1+2||P.x>g.x2-2){
+      startFall();
+    }else{
+      var L=ladderAt(P.floor,P.x);
+      /* broken ladders: barrels roll down them, but Mario can never climb them (ladderAt skips broken) */
+      if(!slipping&&input.up&&!hammerHeld&&L&&L.up>P.floor&&!L.broken){
+        startClimb(L,1);
+      }else if(!slipping&&input.down&&!hammerHeld&&L&&L.down<P.floor&&!L.broken){
+        startClimb(L,-1);
+      }else if(!slipping&&jumpQueued){
+        /* jump always jumps - being next to a ladder must NOT start a climb
+           (only holding UP/DOWN on a ladder climbs) */
+        if(hammerHeld){hammerHeld=false;hammerTime=0;sfx.drop();}
+        startJump();
+      }
+    }
+  }else if(P.mode==='climb'){
+    jumpQueued=false;  /* jump doesn't work on a ladder - don't let it stick for later */
+    var L2=P.climb;
+    P.x=L2.x;
+    var topY=gy(GIRDS[L2.up],L2.x)+14;   /* ladder top = bottom of the girder (14px truss) */
+    var botY=gy(GIRDS[L2.down],L2.x);
+    P.moving=(input.up||input.down);
+    if(input.up){
+      P.y-=cs*dt;
+      if(P.y<=topY){
+        /* reached the top of the ladder: vault OVER onto the platform
+           (leg over -> grip -> second leg over -> stand, see 'topclimb') */
+        P.topY0=gy(GIRDS[L2.up],L2.x);   /* the platform surface the feet will end on */
+        P.topFloor=L2.up;P.popT=0;P.mode='topclimb';
+      }
+    }else if(input.down){
+      P.y+=cs*dt;
+      if(P.y>=botY){P.y=botY;P.floor=L2.down;P.mode='ground';P.climb=null;marioBack=true;}
+    }
+    /* no up/down held => Mario stays exactly where he is on the ladder */
+  }else if(P.mode==='topclimb'){
+    /* real-world climb over the girder (no jumping):
+       A) one leg lifts UP OVER the bar while an arm grabs hold of it,
+       B) the other leg comes around over the bar - body weight on the arms,
+       C) Mario pushes up, swings both legs down and stands on the platform */
+    var TV=0.75;                          /* snappy vault: leg over -> grip -> second leg -> stand */
+    P.popT+=dt;
+    var kv=Math.min(1,P.popT/TV);
+    P.y=P.topY0+14*(1-smooth01(kv));     /* rise from the ladder top to the surface */
+    P.moving=true;
+    if(kv>=1){
+      P.y=P.topY0;P.floor=P.topFloor;P.mode='ground';P.climb=null;marioBack=true;
+      P.walk=0;jumpQueued=false;
+      sfx.land();
+    }
+  }else if(P.mode==='jump'){
+    if(wantX)P.x+=wantX*av*0.85*dt;
+    P.vy-=800*dt;
+    P.jumpY+=P.vy*dt;
+    if(P.vy<=0&&P.jumpY<=0){
+      P.jumpY=0;P.mode='ground';
+      sfx.land();
+    }
+  }else if(P.mode==='fall'){
+    if(wantX)P.x+=wantX*av*0.5*dt;
+    P.vy+=1000*dt;
+    P.fallY+=P.vy*dt;
+    var ay=P.y+P.fallY;
+    var gi2=groundBelow(P.x,P.y+1);
+    if(gi2>=0&&ay>=gy(GIRDS[gi2],P.x)){
+      P.y=gy(GIRDS[gi2],P.x);P.floor=gi2;P.fallY=0;P.vy=0;P.mode='ground';
+      sfx.land();
+    }else if(ay>H+60){
+      if(cheatMode){P.x=132;P.floor=0;P.y=gy(GIRDS[0],132);P.fallY=0;P.vy=0;P.mode='ground';}
+      else killPlayer();
+    }
+  }
+  /* pick up a static hammer the moment Mario's body touches it (each only once) */
+  if(!hammerHeld){
+    var hTop=playerScreenY()-28,hBot=playerScreenY();
+    for(var hpi=0;hpi<HAMS.length;hpi++){
+      var HM=HAMS[hpi];
+      if(!HM.taken&&Math.abs(P.x-HM.x)<14&&HM.y>hTop&&HM.y<hBot){
+        HM.taken=true;
+        hammerHeld=true;hammerTime=8;hammerWarnT=0;
+        marioBack=false;   /* turn to profile so the swing plane reads on screen */
+        addFloat(HM.x,HM.y-18,'HAMMER!','#ffd23e');
+        sfx.hammer();
+        break;
+      }
+    }
+  }
+  if(P.x<8)P.x=8;
+  if(P.x>412)P.x=412;
+  jumpQueued=false;
+}
+/* ===== BARRELS ===== */
+function barrelLadderAt(floor,xOld,xNew){
+  for(var i=0;i<LADDS.length;i++){
+    var L=LADDS[i];
+    if(L.barrel&&L.up===floor){
+      var crossed=(xOld<L.x&&xNew>=L.x)||(xOld>L.x&&xNew<=L.x);
+      if(crossed)return L;
+    }
+  }
+  return null;
+}
+function smooth01(k){return k*k*(3-2*k);}
+function stackTop(){                      /* top barrel of the tall stack = DK's grab source */
+  var s=BARREL_STACKS[BARREL_STACKS.length-1];
+  var rows=(s.n>=4)?3:2;
+  return {x:s.x,y:gy(GIRDS[5],s.x)-(BR+BR*1.7*(rows-1))};
+}
+/* DK barrel-throw, like the 1981 original: DK turns to face the stacks on his
+   LEFT, lifts a barrel off the top stack, swings around to face RIGHT and
+   rolls the barrel down the girder with his arm before it starts rolling */
+function dkAnimUpdate(dt){
+  var p=levelParams();
+  if(dkAnim==='idle'){
+    dkSpawnT-=dt;
+    if(dkSpawnT<=0&&barrels.length<14){dkAnim='turnL';dkAnimT=0;dkHold.visible=false;}
+    return;
+  }
+  dkAnimT+=dt;
+  var hx=DKPOS.x+24;                      /* hand spot: DK's right, on the girder */
+  if(dkAnim==='turnL'){
+    if(dkAnimT>=DK_ANIM.turnL){dkAnim='grab';dkAnimT=0;}
+  }else if(dkAnim==='grab'){
+    dkHold.visible=true;
+    var k=smooth01(Math.min(1,dkAnimT/DK_ANIM.grab));
+    var top=stackTop();
+    dkHold.x=top.x+(hx-top.x)*k;
+    dkHold.y=top.y+((gy(GIRDS[5],hx)-BR)-top.y)*k;
+    if(dkAnimT>=DK_ANIM.grab){dkAnim='turnR';dkAnimT=0;}
+  }else if(dkAnim==='turnR'){
+    dkHold.visible=true;
+    dkHold.x=hx;dkHold.y=gy(GIRDS[5],hx)-BR;
+    if(dkAnimT>=DK_ANIM.turnR){dkAnim='roll';dkAnimT=0;}
+  }else if(dkAnim==='roll'){
+    dkHold.visible=true;
+    var k2=smooth01(Math.min(1,dkAnimT/DK_ANIM.roll));
+    var rx=hx+(DKPOS.x+62-hx)*k2;
+    dkHold.x=rx;dkHold.y=gy(GIRDS[5],rx)-BR;
+    if(dkAnimT>=DK_ANIM.roll){
+      /* release: the barrel starts rolling down the girder on its own */
+      dkHold.visible=false;
+      var isBlue=blueNext;blueNext=false;   /* the stage's first barrel is the blue one */
+      /* blue barrel: released exactly like the others and rolls RIGHT down
+         DK's girder (its scripted route is handled in updateBarrels) */
+      barrels.push({x:rx,floor:5,dir:1,sy:gy(GIRDS[5],rx)-BR,state:'roll',vy:0,L:null,rot:0,bounced:false,blue:isBlue});
+      sfx.dk();
+      dkAnim='idle';
+      dkSpawnT=p.gap*(0.8+Math.random()*0.4);
+    }
+  }
+}
+function updateBarrels(dt){
+  var p=levelParams();
+  if(state==='PLAYING')dkAnimUpdate(dt);  /* DK is busy with Pauline during the clear cutscene */
+  if(dkThrowT>0)dkThrowT-=dt;
+  var bsp=p.bsp;
+  for(var i=barrels.length-1;i>=0;i--){
+    var b=barrels[i];
+    if(b.state==='roll'){
+      /* roll along this girder's pitch (keeps its own way on flat girders) */
+      var d=GIRDS[b.floor].dir||b.dir||-1;
+      b.dir=d;
+      var nx=b.x+d*bsp*dt;
+      b.sy=gy(GIRDS[b.floor],b.x)-BR;
+      if(b.floor===0&&b.x<=DRUM.x+10){
+        b.rot-=(nx-b.x)/BR; /* spin for the travel into the oil drum */
+        if(b.blue)blueHitDrum(i);else oilHit(i);
+        continue;
+      }
+      var L=barrelLadderAt(b.floor,b.x,nx);
+      if(L&&b.blue&&b.floor<5){
+        /* blue barrel reaches the BROKEN LADDER: tumbles over it and drops
+           STRAIGHT DOWN through the middle girders all the way to the bottom */
+        b.rot-=(L.x-b.x)/BR;
+        b.om=-(d*bsp)/BR;
+        b.x=L.x;b.state='bdrop';b.vy=0;
+      }else if(L&&Math.random()<1/3&&!b.blue){   /* blue ignores DK's top ladder and reaches the edge */
+        b.rot-=(L.x-b.x)/BR; /* spin for the travel onto the broken ladder */
+        b.om=-(d*bsp)/BR;   /* keep its angular momentum while sliding the ladder */
+        b.x=L.x;b.state='ladder';b.L=L;
+      }else if(nx<GIRDS[b.floor].x1+2||nx>GIRDS[b.floor].x2-2){
+        b.rot-=(nx-b.x)/BR; /* spin for the travel off the girder edge */
+        b.om=-(d*bsp)/BR;  /* keep its angular momentum while falling */
+        b.x=nx;
+        /* blue barrel falls off the edge like any other: bounces onto the
+           girder below and picks up its new roll direction */
+        b.state='fall';b.vy=0;b.bounced=false;
+      }else{
+        /* no-slip rolling: angle = distance / radius (BR px), signed so the
+           barrel spins clockwise on screen when rolling RIGHT and
+           counter-clockwise when rolling LEFT - matched to its travel */
+        b.rot-=(nx-b.x)/BR;
+        b.x=nx;
+      }
+    }else if(b.state==='ladder'){
+      var dly=150*dt;      /* sliding down the ladder - keep spinning */
+      b.sy+=dly;
+      b.rot+=(b.om||0)*dt;
+      var ty2=gy(GIRDS[b.L.down],b.L.x)-BR;
+      if(b.sy>=ty2){
+        b.sy=ty2;b.floor=b.L.down;b.state='roll';
+        sfx.tick();
+      }
+    }else if(b.state==='bdrop'){
+      /* blue barrel: drops STRAIGHT DOWN to the bottom girder (the one with
+         the oil drum), passing the middle girders, then rolls left to it */
+      b.vy+=900*dt;
+      b.sy+=b.vy*dt;
+      b.rot+=(b.om||0)*dt;
+      var t0=gy(GIRDS[0],b.x)-BR;
+      if(b.sy>=t0){
+        b.sy=t0;b.floor=0;b.state='roll';b.vy=0;
+        b.dir=GIRDS[0].dir||-1;
+        sfx.tick();
+      }
+    }else if(b.state==='fall'){
+      b.vy+=900*dt;
+      var dly2=b.vy*dt;
+      b.sy+=dly2;
+      b.rot+=(b.om||0)*dt; /* keep spinning while falling */
+      var gi3=groundBelow(b.x,GIRDS[b.floor].y+1);
+      if(gi3>=0&&b.sy>=gy(GIRDS[gi3],b.x)-BR){
+        if(!b.bounced&&b.vy>80){
+          /* little bounce off the girder below: kick it upward, let it
+             come back down, then settle into the roll on 2nd contact */
+          b.bounced=true;
+          b.sy=gy(GIRDS[gi3],b.x)-BR;
+          b.vy=-120;
+          if(GIRDS[gi3].dir)b.dir=GIRDS[gi3].dir;
+          sfx.tick();
+        }else{
+          b.sy=gy(GIRDS[gi3],b.x)-BR;b.floor=gi3;b.state='roll';b.vy=0;
+          if(GIRDS[gi3].dir)b.dir=GIRDS[gi3].dir;   /* new pitch flips the roll direction */
+          sfx.tick();
+        }
+      }else if(gi3<0&&b.sy>H+30){
+        barrels.splice(i,1);
+        addScore(50,b.x,H-40);
+      }
+    }
+  }
+}
+/* ===== MONKEYS =====
+   L2  appear & pace their girder.
+   L3+ climb ladders & roam other girders - RANDOM, they never follow Mario.
+   L4+ leave banana skins on the girders (touch one and Mario slips).
+   L5  also drop a banana ON Mario when a monkey is above him. */
+function updateMonkeys(dt){
+  var p=levelParams();
+  for(var i=0;i<monkeys.length;i++){
+    var m=monkeys[i];
+    if(m.dead){
+      m.rT-=dt;
+      if(m.rT<=0){
+        var f=(i%2===0)?2:3;
+        m.floor=f;
+        m.x=(GIRDS[f].dir>0)?GIRDS[f].x1+14:GIRDS[f].x2-14;
+        m.climb=null;m.sy=null;
+        m.dead=false;
+      }
+      continue;
+    }
+    if(m.climb){
+      /* on a ladder: straight up or down (climbDir -1 = up, +1 = down) */
+      var L3=m.climb;
+      var tgt=(m.climbDir<0)?gy(GIRDS[L3.up],L3.x):gy(GIRDS[L3.down],L3.x);
+      m.sy+=m.climbDir*95*dt;
+      if((m.climbDir<0&&m.sy<=tgt)||(m.climbDir>0&&m.sy>=tgt)){
+        m.sy=tgt;
+        m.floor=(m.climbDir<0)?L3.up:L3.down;
+        m.x=L3.x;
+        m.climb=null;m.sy=null;
+        sfx.drop();
+      }
+      continue;
+    }
+    var md=GIRDS[m.floor].dir||-1;   /* monkeys walk in their girder's roll direction */
+    var xOld=m.x;
+    m.x+=md*p.msp*dt;
+    m.ph+=dt*9;
+    /* L3+: crossed a ladder column? maybe climb to another girder (random - no chasing) */
+    if(p.mclimb){
+      for(var li=0;li<LADDS.length;li++){
+        var Ld=LADDS[li];
+        if(Ld.up!==m.floor&&Ld.down!==m.floor)continue;   /* ladder must touch this girder */
+        if((xOld-Ld.x)*(m.x-Ld.x)<0&&Math.random()<0.5){
+          var canUp=(Ld.up>m.floor),canDown=(Ld.down<m.floor);
+          var cd=(canUp&&canDown)?(Math.random()<0.5?-1:1):(canUp?-1:1);
+          m.climb=Ld;m.climbDir=cd;
+          m.sy=gy(GIRDS[m.floor],Ld.x);
+          m.x=Ld.x;
+          sfx.drop();
+          break;
+        }
+      }
+      if(m.climb)continue;
+    }
+    if((md<0&&m.x<GIRDS[m.floor].x1+2)||(md>0&&m.x>GIRDS[m.floor].x2-2)){
+      var gi4=groundBelow(m.x,GIRDS[m.floor].y+1);
+      if(gi4>=0){
+        m.floor=gi4;
+      }else{
+        m.dead=true;m.rT=3.5;
+        spawnBurst(m.x,gy(GIRDS[m.floor],m.x)-10,['#9c642f','#e8c48a'],8);
+      }
+    }
+    /* L4+: leave a banana skin on the girder (a slip trap for Mario) */
+    if(p.mbanana){
+      m.banT-=dt;
+      if(m.banT<=0){
+        m.banT=4+Math.random()*4;
+        var bx=m.x+(Math.random()*24-12);
+        if(bx>=GIRDS[m.floor].x1&&bx<=GIRDS[m.floor].x2){
+          if(bananas.length>=9)bananas.shift();
+          bananas.push({x:bx,floor:m.floor,fy:null,vy:0,t:0});
+        }
+      }
+    }
+    /* L5: drop a banana ON Mario when this monkey is above him */
+    if(p.mdrop&&P&&!P.dead&&m.floor>P.floor){
+      m.dropT-=dt;
+      if(m.dropT<=0){
+        m.dropT=3+Math.random()*3;
+        if(Math.abs(m.x-P.x)<40){
+          if(bananas.length>=9)bananas.shift();
+          bananas.push({x:m.x,floor:null,fy:gy(GIRDS[m.floor],m.x)-12,vy:20,t:0});
+          sfx.drop();
+        }
+      }
+    }
+  }
+  updateBananas(dt);
+}
+/* Mario touches a banana: slips & falls (animated) - a quick but costly delay. */
+function triggerSlip(){
+  if(cheatMode||!P||P.dead)return;
+  if(P.slipT>0)return;
+  P.slipT=1.25;
+  P.slipDir=(P.face>0)?1:-1;
+  if(P.mode==='climb'||P.mode==='topclimb'){
+    P.climb=null;P.mode='ground';P.y=gy(GIRDS[P.floor],P.x);
+  }
+  if(P.mode==='jump')P.vy=Math.min(P.vy,-40);
+  if(P.floor>0&&P.mode==='ground')startFall();   /* the "fall" part of slip-and-fall */
+  sfx.slip();
+  addFloat(P.x,playerScreenY()-34,'SLIP!','#ffd23e');
+  spawnBurst(P.x,playerScreenY()-4,['#ffd23e','#fff3c4','#e8c48a'],12);
+}
+/* ===== BANANAS (slip traps) ===== */
+function updateBananas(dt){
+  if(bananas.length===0)return;
+  for(var i=bananas.length-1;i>=0;i--){
+    var b=bananas[i];
+    b.t+=dt;
+    if(b.fy==null){
+      /* resting on a girder: trips Mario if he walks into it at girder level */
+      if(P&&!P.dead&&P.floor===b.floor&&Math.abs(b.x-P.x)<10&&playerScreenY()>gy(GIRDS[b.floor],b.x)-22){
+        bananas.splice(i,1);
+        triggerSlip();
+      }
+      continue;
+    }
+    /* falling (dropped at Mario) */
+    var oy=b.fy;
+    b.vy+=680*dt;
+    b.fy+=b.vy*dt;
+    var py=playerScreenY();
+    if(P&&!P.dead&&Math.abs(b.x-P.x)<12&&b.fy>py-30&&b.fy<py+4){
+      bananas.splice(i,1);
+      triggerSlip();
+      continue;
+    }
+    /* lands on the first girder below where it started */
+    var gi5=groundBelow(b.x,oy+1);
+    if(gi5>=0&&b.fy>=gy(GIRDS[gi5],b.x)){
+      b.floor=gi5;b.fy=null;
+    }else if(b.fy>H+40){
+      bananas.splice(i,1);
+    }
+  }
+}
+function killMonkey(i){
+  var m=monkeys[i];
+  m.dead=true;m.rT=3.5;
+  addScore(200,m.x,gy(GIRDS[m.floor],m.x)-40);
+  spawnBurst(m.x,gy(GIRDS[m.floor],m.x)-14,['#9c642f','#e8c48a','#ffd23e'],16);
+  triggerShake(4,0.25);
+  sfx.monkey();
+}
+/* ===== HITS / DEATH ===== */
+function playerScreenY(){
+  return P.y-P.jumpY+P.fallY;
+}
+function checkHits(){
+  var py=playerScreenY();
+  var i;
+  for(i=0;i<barrels.length;i++){
+    var b=barrels[i];
+    /* real body overlap: Mario's feet at py (~28px tall) vs barrel radius BR.
+       This lets Mario jump over a barrel; he only dies on actual contact. */
+    var mTop=py-28,mBot=py,bTop=b.sy-BR,bBot=b.sy+BR;
+    if(mTop<bBot&&mBot>bTop){
+      if(hammerHeld&&Math.abs(b.x-P.x)<20){
+        spawnBurst(b.x,b.sy,['#c8893a','#8f5522','#ffd23e'],18);
+        addScore(100,b.x,b.sy-22);
+        triggerShake(5,0.3);
+        sfx.smash();
+        barrels.splice(i,1);
+        i--;
+      }else if(Math.abs(b.x-P.x)<13){
+        hurtPlayer();
+        return;
+      }
+    }
+  }
+  /* living fires: touching one kills Mario (same body-overlap rule as the
+     barrels, so he can jump over it); a hammer swing puts it out.
+     Up to MAX_FLAMES can be alive at once (level 5). */
+  for(var fhi=0;fhi<fires.length;fhi++){
+    var ff=fires[fhi];
+    var fyf=(ff.sy==null)?gy(GIRDS[ff.floor],ff.x):ff.sy;
+    var mT2=py-28,mB2=py,fTop=fyf-18,fBot=fyf+1;
+    if(mT2<fBot&&mB2>fTop){
+      if(hammerHeld&&Math.abs(ff.x-P.x)<22){
+        spawnBurst(ff.x,fyf-8,['#ff9d2f','#ffd23e','#3ef5f5'],18);
+        addScore(150,ff.x,fyf-24);
+        triggerShake(5,0.3);
+        sfx.smash();
+        fires.splice(fhi,1);
+        fhi--;
+      }else if(Math.abs(ff.x-P.x)<14){
+        hurtPlayer();
+        return;
+      }
+    }
+  }
+  /* DK: touching Donkey Kong kills Mario (he guards girder 5 on every level) */
+  var dkSurf=gy(GIRDS[5],DKPOS.x);
+  if(Math.abs(P.x-DKPOS.x)<22&&py>dkSurf-46&&py-28<dkSurf){
+    hurtPlayer();
+    return;
+  }
+  for(i=0;i<monkeys.length;i++){
+    var m=monkeys[i];
+    if(m.dead)continue;
+    var my=((m.sy!=null)?m.sy:gy(GIRDS[m.floor],m.x))-10;
+    /* real body overlap (Mario ~28px tall, monkey ~18px tall) so Mario can
+       cleanly JUMP OVER a monkey - he only dies on actual contact */
+    var mkTop=my-9,mkBot=my+9;
+    if(hammerHeld&&Math.abs(m.x-P.x)<22&&Math.abs(my-py)<34){
+      killMonkey(i);
+    }else if(Math.abs(m.x-P.x)<13&&mkTop<py&&mkBot>py-28){
+      hurtPlayer();
+      return;
+    }
+  }
+}
+function killPlayer(){
+  if(cheatMode)return;                        /* cheat mode: invincible, no lives lost */
+  if(P.mode==='dead')return;
+  P.mode='dead';
+  P.deadT=0;
+  state='DYING';stateT=0;
+  hammerHeld=false;
+  musicMode('off');
+  sfx.die();
+  triggerShake(7,0.4);
+  spawnBurst(P.x,playerScreenY()-14,['#ff5a3c','#ffd23e','#ffffff','#2a3fd4'],20);
+}
+/* An enemy hit costs ONE HEART, not a life: Mario flashes for ~2s (and is
+   invulnerable while flashing) then carries on. When his last heart is
+   spent he really dies. Hearts refill to MAX_HEARTS on every fresh stage. */
+function hurtPlayer(){
+  if(cheatMode)return;                        /* cheat mode: invincible */
+  if(!P||P.mode==='dead')return;
+  if(P.hurtT>0)return;                        /* still flashing from the last hit */
+  if(hearts>1){
+    hearts--;
+    updateHearts();
+    P.hurtT=2.0;                              /* ~2s of flashing + invulnerability */
+    sfx.ouch();
+    addFloat(P.x,playerScreenY()-44,'OUCH!','#ff6a4a');
+    spawnBurst(P.x,playerScreenY()-14,['#ff5a3c','#ffffff','#ffd23e'],12);
+    triggerShake(4,0.25);
+  }else{
+    hearts=0;updateHearts();
+    killPlayer();                             /* out of hearts: real death */
+  }
+}
+function oilHit(i){
+  barrels.splice(i,1);
+  oilFx=1.2;
+  sfx.oil();
+  spawnBurst(DRUM.x,DRUM.y-14,['#ff9d2f','#ffd23e','#ff4d00','#ffe9a0'],26);
+  addScore(50,DRUM.x+16,DRUM.y-70);
+  if(P.floor===0&&Math.abs(P.x-DRUM.x)<85)hurtPlayer();
+}
+function blueHitDrum(i){
+  /* blue barrel slams into the oil drum: big particle explosion, and a living
+     barrel-sized fire is born at the drum and starts roaming */
+  barrels.splice(i,1);
+  sfx.boom();
+  sfx.oil();
+  triggerShake(8,0.4);
+  spawnBurst(DRUM.x,DRUM.y-14,['#3ec6ff','#3ef5f5','#ff9d2f','#ffd23e','#ffffff'],34);
+  addScore(100,DRUM.x+16,DRUM.y-70);
+  if(fires.length<MAX_FLAMES)
+    fires.push({x:DRUM.x+14,floor:0,dir:(P.x>=DRUM.x+14)?1:-1,state:'walk',sy:null,toY:0,toFloor:0,L:null,tried:{},ph:Math.random()*6});
+  if(P.floor===0&&Math.abs(P.x-DRUM.x)<85)hurtPlayer();
+}
+/* ===== LIVING FIRE =====
+   Raging fire that HUNTS Mario: patrols its girder (turning at the edges,
+   never falling off), at every ladder - broken or not - rolls a climb die
+   with a 50% base chance, raised to 75% when climbing takes it toward
+   Mario's girder and cut to 25% when it takes it away. On landing a new
+   girder it walks toward Mario's side of it 75% of the time.
+   LEVEL 5: every time a flame reaches a new girder it spawns a copy -
+   at most MAX_FLAMES are alive at any one time. */
+function fireReachedGirder(f){
+  if(level<5||fires.length>=MAX_FLAMES)return;
+  fires.push({x:f.x,floor:f.floor,dir:(P.x>=f.x)?1:-1,state:'walk',
+              sy:null,toY:0,toFloor:0,L:null,tried:{},ph:Math.random()*6});
+  var fy=gy(GIRDS[f.floor],f.x);
+  spawnBurst(f.x,fy-10,['#ff9d2f','#ffd23e','#ff5a00','#ffe9a0'],16);
+  addFloat(f.x,fy-34,'FIRE SPREADS!','#ff9d2f');
+}
+function updateFires(dt){
+  for(var fi=0;fi<fires.length;fi++){
+    var f=fires[fi];
+    f.ph+=dt*7;
+    var clsp=110;               /* climbing speed (px/s) */
+    var fsp=42;                  /* patrol speed (px/s) - constant, never speeds up */
+    /* angry embers constantly spurt UP out of the fire (negative g = buoyant) */
+    var fyy=(f.sy==null)?gy(GIRDS[f.floor],f.x):f.sy;
+    if(Math.random()<dt*26){
+      particles.push({
+        x:f.x+(Math.random()*12-6),y:fyy-3-Math.random()*10,
+        vx:(Math.random()*2-1)*16,vy:-(50+Math.random()*100),g:-110,
+        life:0.35+Math.random()*0.55,t:0,size:1.5+Math.random()*2,
+        color:['#ffd23e','#ff9d2f','#ff5a00','#ffe9a0'][(Math.random()*4)|0]
+      });
+    }
+    if(f.state==='climb'){
+      var d=(f.toY>f.sy)?1:-1;
+      f.sy+=d*clsp*dt;
+      if((d>0&&f.sy>=f.toY)||(d<0&&f.sy<=f.toY)){
+        f.floor=f.toFloor;
+        /* LANDED: release the pinned ladder height (sy=null) so the fire follows
+           the NEW girder's surface line (gy()) as it walks - otherwise it would
+           keep the old fixed Y and drift above/below pitched girders, dipping
+           into the truss. Landing point is unchanged: gy(newGirder, ladderX)
+           is exactly toY, so there's no visible pop. */
+        f.sy=null;
+        f.state='walk';f.L=null;
+        /* hunting: on reaching a new girder, mostly pick the direction that
+           heads toward where Mario is (75%) so it chases him across the level */
+        var toward=(P.x>=f.x)?1:-1;
+        f.dir=(Math.random()<0.75)?toward:(-toward);
+        sfx.tick();
+        fireReachedGirder(f);   /* L5: the fire spreads - a new flame is born */
+      }
+      continue;
+    }
+    var g=GIRDS[f.floor];
+    var nx=f.x+f.dir*fsp*dt;
+    /* never falls off a girder edge - clamps and reverses */
+    if(nx<g.x1+4){nx=g.x1+4;if(f.dir<0)f.dir=1;}
+    else if(nx>g.x2-4){nx=g.x2-4;if(f.dir>0)f.dir=-1;}
+    /* ladder encounter (broken ladders included): 50% base climb chance,
+       hunting-weighted - 75% when it climbs toward Mario's girder, 25% away;
+       if it passes by, it retries that ladder after a 3s cooldown */
+    for(var i=0;i<LADDS.length;i++){
+      var L=LADDS[i];
+      if(L.up!==f.floor&&L.down!==f.floor)continue;
+      if((f.tried[i]||0)>time)continue;
+      if(Math.abs(nx-L.x)<5){
+        f.tried[i]=time+3;
+        var mUp=(P.floor>f.floor),mDn=(P.floor<f.floor);
+        var toUp=(L.down===f.floor);                       /* this ladder goes UP from here */
+        var toward=(mUp&&toUp)||(mDn&&!toUp);              /* climb heads toward Mario's girder? */
+        var chance=(mUp||mDn)?(toward?0.75:0.25):0.5;      /* 50% base, hunting bias on top */
+        if(Math.random()<chance){
+          var toF=(L.down===f.floor)?L.up:L.down;
+          f.sy=gy(g,L.x);f.toY=gy(GIRDS[toF],L.x);f.toFloor=toF;
+          f.x=L.x;f.L=L;f.state='climb';
+          break;
+        }
+      }
+    }
+    if(f.state==='walk')f.x=nx;
+  }
+}
+/* ===== FX (particles + floating score text) ===== */
+function spawnBurst(x,y,colors,n){
+  for(var i=0;i<n;i++){
+    var a=Math.random()*Math.PI*2,sp=40+Math.random()*160;
+    particles.push({
+      x:x,y:y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-40,g:260,
+      life:0.5+Math.random()*0.6,t:0,size:2+Math.random()*4,
+      color:colors[i%colors.length]
+    });
+  }
+}
+function addFloat(x,y,txt,color){
+  floats.push({x:x,y:y,txt:txt,color:color,t:0});
+}
+function updateFX(dt){
+  for(var i=particles.length-1;i>=0;i--){
+    var p=particles[i];
+    p.t+=dt;
+    if(p.t>=p.life){particles.splice(i,1);continue;}
+    p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=p.g*dt;
+  }
+  for(var j=floats.length-1;j>=0;j--){
+    var f=floats[j];
+    f.t+=dt;
+    if(f.t>=1.2){floats.splice(j,1);continue;}
+    f.y-=26*dt;
+  }
+}
+/* ===== MAIN UPDATE (state machine) ===== */
+function update(dt){
+  updateFX(dt);
+  if(state==='TITLE'){
+    titleT+=dt;
+    return;
+  }
+  if(state==='READY'){
+    stateT-=dt;
+    if(stateT<=0){
+      state='PLAYING';
+      musicMode('play');
+    }
+    return;
+  }
+  if(state==='INTRO'){
+    introT+=dt;
+    if(introT>=INTRO_T.question&&!introFx.jingle){
+      introFx.jingle=true;
+      sfx.jingle();
+      sfx.plane();
+    }
+    if(introT>=INTRO_T.end)beginLevel();
+    return;
+  }
+  if(state==='WIN'){
+    stateT+=dt;
+    if(stateT>=WIN_T.fallEnd&&!winFx.land){
+      winFx.land=true;
+      spawnBurst(56,gy(GIRDS[0],56)-8,['#c9c9d8','#8f8fa0','#ffd23e','#e8c48a'],28);
+      triggerShake(9,0.5);
+      sfx.dk();sfx.smash();
+    }
+    if(stateT>=WIN_T.winT&&!winFx.j){winFx.j=true;sfx.win();}
+    if(stateT>0.4&&Math.random()<dt*2.5){
+      var hx=(P.x+PAULINE.x)/2;
+      spawnBurst(hx,gy(GIRDS[6],hx)-36,['#ff7bac','#ffb3cd','#ffffff'],4);
+    }
+    return;
+  }
+  if(state==='STAGECLEAR'){
+    scT+=dt;
+    if(!scFlags.grab&&scT>=SC_T.grabEnd){scFlags.grab=true;sfx.grab();}
+    updateBarrels(dt);   /* whatever is rolling keeps rolling - DK throws no new barrels */
+    updateMonkeys(dt);
+    if(scT>=SC_T.settleEnd){
+      var sl=Math.floor((scT-SC_T.settleEnd)/SC_T.stompDur);
+      if(sl>scStomps&&sl<=3)scStomp();     /* 3 stomp landings = 3 shakes + barrel pops */
+    }
+    if(scT>=SC_T.fadeEnd)scFinish();
+    return;
+  }
+  if(state==='PLAYING'){
+    if(oilFx>0)oilFx-=dt;
+    updatePlayer(dt);
+    if(state!=='PLAYING')return;
+    if(hammerHeld){
+      hammerTime-=dt;
+      if(hammerTime<=0){
+        hammerHeld=false;hammerTime=0;
+        sfx.drop();
+      }else if(hammerTime<=2.5){
+        hammerWarnT-=dt;
+        if(hammerWarnT<=0){hammerWarnT=0.45;sfx.hammerWarn();}
+      }
+    }
+    updateBarrels(dt);
+    if(state!=='PLAYING')return;
+    updateMonkeys(dt);
+    if(state!=='PLAYING')return;
+    updateFires(dt);
+    if(state!=='PLAYING')return;
+    checkHits();
+    if(state!=='PLAYING')return;
+    if(P.floor===6&&P.x<=KISS_X){       /* kiss spot is on the LEFT, where Pauline stands */
+      levelClear();
+      return;
+    }
+    if(Math.random()<dt*0.12){
+      addFloat(PAULINE.x,PAULINE.y-46,'HELP!','#ff9ecb');
+    }
+    return;
+  }
+  if(state==='DYING'){
+    P.deadT+=dt;
+    if(P.deadT>2.0){
+      lives--;
+      updateLives();
+      if(lives<=0){
+        state='GAMEOVER';stateT=0;
+        sfx.gameover();
+      }else{
+        resetPositions();
+        state='READY';stateT=2.4;
+        sfx.ready();
+      }
+    }
+    return;
+  }
+  if(state==='GAMEOVER'){
+    stateT+=dt;
+    if(stateT>9)toTitle();
+    return;
+  }
+  if(state==='INTERM'){
+    stateT+=dt;
+    if(stateT>6)nextCycle();
+    return;
+  }
+}
+/* ===== 2D RENDERING ===== */
+function paintBG(){
+  var g=bgCtx;
+  g.clearRect(0,0,W,H);
+  var gr=g.createLinearGradient(0,0,0,H);
+  gr.addColorStop(0,'#070716');gr.addColorStop(0.6,'#0c1030');gr.addColorStop(1,'#141a3f');
+  g.fillStyle=gr;g.fillRect(0,0,W,H);
+  for(var i=0;i<70;i++){
+    var x=(i*97)%W,y=(i*53)%380+8,s=(i%3)*0.5+0.5;
+    g.fillStyle='rgba(255,255,255,'+(0.2+((i*13)%10)/25)+')';
+    g.fillRect(x,y,s,s);
+  }
+  g.fillStyle='#f4f1d8';
+  g.beginPath();g.arc(352,54,17,0,7);g.fill();
+  g.fillStyle='rgba(160,150,110,0.35)';
+  g.beginPath();g.arc(346,48,4,0,7);g.fill();
+  g.beginPath();g.arc(358,60,3,0,7);g.fill();
+  /* city silhouette behind the girders */
+  var bld=[[0,95,58],[66,130,52],[126,80,64],[198,145,58],[264,100,60],[332,125,88]];
+  for(var b=0;b<bld.length;b++){
+    var bx=bld[b][0],bw=bld[b][1]?0:0;
+    (function(x,h,w){
+      g.fillStyle='#0a0d22';
+      g.fillRect(x,H-h-8,w,h+8);
+      g.fillStyle='#1a2148';
+      for(var wy=H-h+8;wy<H-18;wy+=16){
+        for(var wx=x+6;wx<x+w-8;wx+=14){
+          if(((wx*7+wy*13)%17)<9){g.fillRect(wx,wy,5,7);}
+        }
+      }
+    })(bld[b][0],bld[b][1],bld[b][2]);
+  }
+  /* girder + ladder outlines (also the no-WebGL fallback world) */
+  /* 1930s truss girders: thin metal bars on top & bottom with a tall open
+     X lattice between them (big dark spaces, thin X lines) */
+  for(var gi=0;gi<GIRDS.length;gi++){
+    var gg=GIRDS[gi];
+    var n=Math.max(1,Math.round((gg.x2-gg.x1)/14));      /* number of X cells */
+    var c0=(gg.x1+gg.x2)/2-n*7;                          /* lattice left edge  */
+    var c1=gg.x2-c0;                                     /* lattice right edge */
+    g.strokeStyle='#ff6a8f';g.lineWidth=2;
+    g.beginPath();
+    g.moveTo(c0,gy(gg,c0)+1);g.lineTo(c1,gy(gg,c1)+1);      /* thin top bar    (gy+0..gy+2)   - ends at the outer X edges */
+    g.moveTo(c0,gy(gg,c0)+13);g.lineTo(c1,gy(gg,c1)+13);    /* thin bottom bar (gy+12..gy+14) */
+    g.stroke();
+    g.strokeStyle='#ff4d7d';g.lineWidth=1.5;
+    g.beginPath();
+    for(var sx=c0;sx<c1;sx+=14){                                        /* X lattice between the bars */
+      var sxe=sx+14;
+      var aT=gy(gg,sx)+2,aB=gy(gg,sx)+12,bT=gy(gg,sxe)+2,bB=gy(gg,sxe)+12;
+      g.moveTo(sx,aT);g.lineTo(sxe,bB);
+      g.moveTo(sxe,bT);g.lineTo(sx,aB);
+    }
+    g.stroke();
+  }
+  /* ladders: arcade cyan - broken ones have their middle rungs AND a piece of
+     both side rails cut out, so the player can see they're broken */
+  g.lineWidth=2;
+  g.strokeStyle='#3ef5f5';
+  for(var li=0;li<LADDS.length;li++){
+    var L=LADDS[li];
+    var y2=gy(GIRDS[L.down],L.x);                        /* foot at the TOP of the lower girder */
+    var y1=gy(GIRDS[L.up],L.x)+14;                       /* top at the BOTTOM of the upper girder (14px truss) */
+    var mid=(y1+y2)/2,cut=12;                            /* height of the cut-out zone (2 middle rungs) */
+    g.beginPath();
+    if(L.broken){
+      g.moveTo(L.x-5,y1);g.lineTo(L.x-5,mid-cut);        /* left rail, middle chunk missing  */
+      g.moveTo(L.x-5,mid+cut);g.lineTo(L.x-5,y2);
+      g.moveTo(L.x+5,y1);g.lineTo(L.x+5,mid-cut);        /* right rail, middle chunk missing */
+      g.moveTo(L.x+5,mid+cut);g.lineTo(L.x+5,y2);
+    }else{
+      g.moveTo(L.x-5,y1);g.lineTo(L.x-5,y2);
+      g.moveTo(L.x+5,y1);g.lineTo(L.x+5,y2);
+    }
+    for(var ri=1;ri<=4;ri++){                            /* 4 evenly-spaced rungs */
+      var ry=y1+(y2-y1)*ri/5;
+      if(L.broken&&Math.abs(ry-mid)<cut)continue;        /* middle rungs cut out */
+      g.moveTo(L.x-6,ry);g.lineTo(L.x+6,ry);
+    }
+    g.stroke();
+  }
+}
+function drawPlanes(){
+  /* WWI-style bi-planes patrol the sky (King Kong overfly): propeller disc
+     out front, two wings stacked one above the other with struts, tail fin.
+     Drawn on the BACKGROUND canvas so they fly BEHIND the girders and the
+     3D characters - during the intro AND as ambience while playing. */
+  var defs=[
+    {y:40,sp:60,delay:0,   s:1,    ph:0},
+    {y:66,sp:46,delay:1.6, s:0.72, ph:2.4}
+  ];
+  for(var i=0;i<defs.length;i++){
+    var d=defs[i];
+    var lt=time-d.delay;
+    if(lt<0)continue;
+    var span=W+160;
+    var x=((lt*d.sp)%span)-80;
+    drawBiplane(bgCtx,x,d.y+Math.sin(lt*1.6+d.ph)*3.5,d.s);
+  }
+}
+function drawBiplane(g,x,y,s){
+  /* 2D fallback: Sopwith Camel side profile, nose LEFT, like the reference photo */
+  g.save();
+  g.translate(x,y);g.scale(s,s);
+  var olive='#6b6046',oliveD='#4f452f',white='#e8e6df',silver='#c9c7bd',tan='#b5722f';
+  var u2=0.36;
+  function mrect2(cx,cy,w,h,oxp){g.fillRect(oxp+cx*u2,(2.5-cy-h)*u2,w*u2,h*u2);}
+  /* tan N-struts */
+  g.strokeStyle=tan;g.lineWidth=1.4;
+  g.beginPath();
+  g.moveTo(-4,-3.2);g.lineTo(-4,-5.9);
+  g.moveTo(3,-3.2);g.lineTo(3,-5.9);
+  g.moveTo(-2,1.8);g.lineTo(-2,4.4);
+  g.moveTo(3,1.8);g.lineTo(3,4.4);
+  g.stroke();
+  /* TOP wing: long ribbed olive fabric wing */
+  g.fillStyle=olive;
+  g.fillRect(-8.5,-8.2,16,2.4);
+  g.fillStyle=oliveD;
+  g.fillRect(-3,-8.4,4.5,2.8);                       /* darker center section */
+  for(var ri=0;ri<5;ri++)g.fillRect(-7.5+ri*3,-8.3,0.35,2.6);  /* fabric ribs */
+  /* wing roundels (blue / white / red) */
+  g.fillStyle='#2b3f7e';g.beginPath();g.arc(1.5,-7,1.7,0,7);g.fill();
+  g.fillStyle=white;g.beginPath();g.arc(1.5,-7,1.15,0,7);g.fill();
+  g.fillStyle='#b3282d';g.beginPath();g.arc(1.5,-7,0.6,0,7);g.fill();
+  /* BOTTOM wing: much smaller */
+  g.fillStyle=olive;
+  g.fillRect(-3.5,4.8,10,1.8);
+  g.fillStyle='#2b3f7e';g.beginPath();g.arc(-1,5.7,1.2,0,7);g.fill();
+  g.fillStyle=white;g.beginPath();g.arc(-1,5.7,0.8,0,7);g.fill();
+  g.fillStyle='#b3282d';g.beginPath();g.arc(-1,5.7,0.4,0,7);g.fill();
+  /* single spoked wheel, white hub */
+  g.fillStyle='#262626';g.beginPath();g.arc(0,9.6,3.3,0,7);g.fill();
+  g.strokeStyle=white;g.lineWidth=0.8;
+  g.beginPath();
+  for(var wi=0;wi<4;wi++){
+    var wa=wi*Math.PI/4;
+    g.moveTo(-Math.cos(wa)*2.9,9.6-Math.sin(wa)*2.9);
+    g.lineTo(Math.cos(wa)*2.9,9.6+Math.sin(wa)*2.9);
+  }
+  g.stroke();
+  g.fillStyle=white;g.beginPath();g.arc(0,9.6,1.1,0,7);g.fill();
+  /* fuselage (olive), nose toward -x */
+  g.fillStyle=olive;
+  g.beginPath();
+  g.moveTo(-8,-1.8);
+  g.quadraticCurveTo(-4,-4.6,10,-3.6);
+  g.lineTo(13,-2.6);
+  g.lineTo(13,2.6);
+  g.lineTo(9,3.4);
+  g.quadraticCurveTo(-4,4.6,-8,1.8);
+  g.closePath();g.fill();
+  /* cockpit: dark open canopy */
+  g.fillStyle='#241f1a';g.fillRect(-3.8,-4.4,4.2,1.5);
+  /* markings: "N" + roundel + "F6034" (white block letters) */
+  g.fillStyle=white;
+  g.fillRect(-5.6,-0.95,0.3,1.9);
+  g.fillRect(-4.9,-0.95,0.3,1.9);
+  g.save();g.translate(-5.25,0);g.rotate(0.62);g.fillRect(-0.55,-0.17,1.1,0.34);g.restore();
+  g.fillStyle='#2b3f7e';g.beginPath();g.arc(-0.8,0,1.75,0,7);g.fill();
+  g.fillStyle=white;g.beginPath();g.arc(-0.8,0,1.2,0,7);g.fill();
+  g.fillStyle='#b3282d';g.beginPath();g.arc(-0.8,0,0.62,0,7);g.fill();
+  var L2=[
+    [[0,0,0.8,5],[0,4.2,2.4,0.8],[0,2.1,1.9,0.8]],
+    [[0,0,0.8,5],[0,4.2,2.6,0.8],[0,2.1,2.6,0.8],[0,0,2.6,0.8],[1.8,0,0.8,2.9]],
+    [[0,0,0.8,5],[1.8,0,0.8,5],[0,4.2,2.6,0.8],[0,0,2.6,0.8]],
+    [[0,4.2,2.6,0.8],[0,2.1,2.1,0.8],[0,0,2.6,0.8],[1.8,0,0.8,5]],
+    [[0,0,0.8,3.1],[0,1.7,2.6,0.8],[1.8,0,0.8,5]]
+  ];
+  g.fillStyle=white;
+  var ox2=4.4;
+  for(var li2=0;li2<L2.length;li2++){
+    var ch2=L2[li2];
+    for(var bi2=0;bi2<ch2.length;bi2++)mrect2(ch2[bi2][0],ch2[bi2][1],ch2[bi2][2],ch2[bi2][3],ox2);
+    ox2+=3.5;
+  }
+  /* rudder: red / white / blue vertical stripes */
+  g.fillStyle='#b3282d';g.fillRect(9.5,-5.5,1.8,7.5);
+  g.fillStyle=white;g.fillRect(11.3,-5.5,1.8,7.5);
+  g.fillStyle='#2b3f7e';g.fillRect(13.1,-5.5,1.8,7.5);
+  /* horizontal stabilizer */
+  g.fillStyle=olive;g.fillRect(8,-1.6,5.5,1.8);
+  /* big white rotary cowling with silver rim */
+  g.fillStyle=silver;g.beginPath();g.arc(-8.6,0,4.8,0,7);g.fill();
+  g.fillStyle=white;g.beginPath();g.arc(-11,0,4.55,0,7);g.fill();
+  /* white propeller (flicker = spin) + hub */
+  var pa=0.55+0.45*Math.sin(time*22);
+  g.fillStyle='rgba(232,230,223,'+(0.5+0.4*pa).toFixed(2)+')';
+  g.beginPath();g.ellipse(-15.8,0,1.5,7.5,0,0,7);g.fill();
+  g.fillStyle=silver;g.beginPath();g.arc(-14.6,0,1.1,0,7);g.fill();
+  g.restore();
+}
+function text(s,x,y,size,color,align){
+  var g=ovCtx;
+  g.font=size+'px "Press Start 2P", monospace';
+  g.textAlign=align||'center';
+  g.textBaseline='middle';
+  g.fillStyle='rgba(0,0,0,0.6)';
+  g.fillText(s,x+2,y+2);
+  g.fillStyle=color;
+  g.fillText(s,x,y);
+}
+function drawFX(g){
+  var i,p,f;
+  for(i=0;i<particles.length;i++){
+    p=particles[i];
+    g.globalAlpha=Math.max(0,1-p.t/p.life);
+    g.fillStyle=p.color;
+    g.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);
+  }
+  g.globalAlpha=1;
+  for(i=0;i<floats.length;i++){
+    f=floats[i];
+    g.globalAlpha=Math.max(0,1-f.t/1.2);
+    text(f.txt,f.x,f.y,10,f.color);
+  }
+  g.globalAlpha=1;
+}
+function drawState(g){
+  var cx=W/2;
+  if(state==='TITLE'){
+    g.fillStyle='rgba(4,4,14,0.55)';
+    g.fillRect(0,0,W,H);
+    text('DONKEY',cx,105,30,'#ffd23e');
+    text('KONG',cx,150,34,'#ff5a3c');
+    text('1981 ARCADE CLASSIC',cx,192,9,'#8f8fc0');
+    if(Math.floor(time*2)%2===0){
+      text('TAP / PRESS ANY KEY',cx,300,12,'#ffffff');
+      text('TO START',cx,324,12,'#ffffff');
+    }
+    if(high>0)text('HIGH SCORE: '+high,cx,372,10,'#3ef5f5');
+    text('WALK UP · KISS PAULINE',cx,430,8,'#6a6a8a');
+    text('GRAB THE HAMMER · SMASH BARRELS',cx,452,8,'#6a6a8a');
+    text('JOYSTICK + JUMP / ARROWS / GAMEPAD',cx,492,7,'#55556f');
+    return;
+  }
+  if(state==='READY'){
+    text('LEVEL '+level,cx,200,16,'#3ef5f5');
+    text('READY!',cx,245,20,'#ffd23e');
+    if(level===2)text('WATCH OUT - MONKEYS!',cx,300,10,'#ff9d2f');
+    if(level===3)text('THE MONKEYS ROAM THE GIRDERS!',cx,300,10,'#ff9d2f');
+    if(level===4)text('BANANAS! MARIO SLIPS ON THEM!',cx,300,10,'#ff9d2f');
+    if(level>=5)text('MAXIMUM CHAOS - SAVE PAULINE!',cx,300,10,'#ff9d2f');
+    return;
+  }
+  if(state==='INTRO'){
+    /* fade in from the black the finished stage faded to (or from the title) */
+    var fin=smooth01(Math.min(1,introT/0.55));
+    if(fin<1){
+      g.fillStyle='rgba(3,3,10,'+(1-fin).toFixed(3)+')';
+      g.fillRect(0,0,W,H);
+    }
+    if(introT>=INTRO_T.question){
+      var bob=Math.sin(time*2.4)*3;
+      text('HOW HIGH',cx,280+bob,16,'#ffd23e');
+      text('CAN YOU GET?',cx,310+bob,16,'#ffd23e');
+    }
+    if(Math.floor(time*2)%2===0)text('TAP TO SKIP',cx,470,8,'#8f8fc0');
+    if(paused){
+      text('PAUSE',cx,H/2-40,18,'#ffd23e');
+      text('TAP / P TO RESUME',cx,H/2,10,'#c8c8e8');
+    }
+    return;
+  }
+  if(state==='WIN'){
+    g.fillStyle='rgba(4,4,14,0.5)';
+    g.fillRect(0,0,W,H);
+    var T4=stateT;
+    if(T4<WIN_T.fallStart){
+      text('LEVEL 5 COMPLETE!',cx,120,14,'#ffd23e');
+      text('PAULINE IS SAVED!',cx,175,18,'#3ef5f5');
+    }else if(T4<WIN_T.fallEnd){
+      text('PAULINE IS SAVED!',cx,100,13,'#3ef5f5');
+      text('DONKEY KONG TUMBLES OFF THE BUILDING!',cx,150,9,'#8f8fc0');
+    }else if(T4<WIN_T.winT){
+      text('PAULINE IS SAVED!',cx,80,12,'#3ef5f5');
+      text('K.O.!',cx,150,30,'#ff5a3c');
+      text('DONKEY KONG IS OUT COLD!',cx,190,9,'#8f8fc0');
+      var sxw=56,syw=gy(GIRDS[0],56);
+      for(var ssw=0;ssw<3;ssw++){
+        var a2=T4*3.2+ssw*2.09;
+        g.fillStyle='#ffd23e';
+        g.beginPath();g.arc(sxw-36+Math.cos(a2)*11,syw-30+Math.sin(a2)*4,2.2,0,7);g.fill();
+      }
+    }else{
+      text('GAME OVER',cx,150,24,'#ff5a3c');
+      text('YOU WIN!',cx,210,32,'#ffd23e');
+      text('PAULINE IS SAFE - DK IS OUT COLD',cx,262,8,'#8f8fc0');
+      text('FINAL SCORE: '+String(score).padStart(6,'0'),cx,300,12,'#3ef5f5');
+      if(newHigh)text('NEW HIGH SCORE!',cx,336,11,'#ffd700');
+      if(Math.floor(time*2)%2===0)text('PRESS ENTER / TAP',cx,392,10,'#e8e8f0');
+    }
+    return;
+  }
+  if(state==='STAGECLEAR'){
+    if(scT<SC_T.stompEnd-0.2)text('LEVEL CLEAR!',cx,58,13,'#ffd23e');
+    var fd=scT-SC_T.stompEnd;
+    if(fd>0){
+      /* stage fades to black, then the next level comes up */
+      var fa=Math.min(1,fd/(SC_T.fadeEnd-SC_T.stompEnd));
+      g.fillStyle='rgba(3,3,10,'+fa.toFixed(3)+')';
+      g.fillRect(0,0,W,H);
+      if(fa>0.35)text('LEVEL '+level+' COMPLETE',cx,H/2-8,16,'#ffd23e');
+    }
+    if(paused){
+      text('PAUSE',cx,H/2-40,18,'#ffd23e');
+      text('TAP / P TO RESUME',cx,H/2,10,'#c8c8e8');
+    }
+    return;
+  }
+  if(state==='GAMEOVER'){
+    g.fillStyle='rgba(12,0,0,0.5)';
+    g.fillRect(0,0,W,H);
+    text('GAME OVER',cx,180,26,'#ff3b3b');
+    text('SCORE: '+score,cx,242,13,'#ffd23e');
+    text('HIGH: '+Math.max(high,score),cx,272,11,'#3ef5f5');
+    if(newHigh)text('NEW HIGH SCORE!',cx,308,12,'#ffd700');
+    text('PRESS R / TAP TO RESTART',cx,365,10,'#c8c8e8');
+    text('TITLE IN '+Math.max(0,Math.ceil(9-stateT))+'s',cx,390,8,'#6a6a8a');
+    return;
+  }
+  if(state==='INTERM'){
+    g.fillStyle='rgba(4,4,14,0.5)';
+    g.fillRect(0,0,W,H);
+    text('INTERMISSION',cx,120,20,'#ffd23e');
+    text('DK GETS THE LADDERS',cx,165,10,'#8f8fc0');
+    text('ROUND '+(cycles+1),cx,205,12,'#3ef5f5');
+    if(Math.floor(time*2)%2===0)text('TAP TO SKIP',cx,480,10,'#c8c8e8');
+    return;
+  }
+  if(paused){
+    g.fillStyle='rgba(4,4,14,0.6)';
+    g.fillRect(0,0,W,H);
+    text('PAUSE',cx,230,26,'#ffd23e');
+    text('TAP / P TO RESUME',cx,285,10,'#c8c8e8');
+  }
+}
+function drawFallback(g){
+  if(!P)return;
+  /* nudge Mario down a touch so his feet sit on the platform surface */
+  var py=playerScreenY()+3;
+  g.fillStyle='#c0392b';
+  g.fillRect(DRUM.x-8,DRUM.y-18,16,18);
+  var dki=(state==='STAGECLEAR')?scInfo(scT):(state==='WIN')?winInfo(stateT):(state==='INTRO')?introInfo(introT):null;
+  var pxi=dki?dki.px:PAULINE.x,pyi=dki?dki.py:gy(GIRDS[6],PAULINE.x);
+  g.fillStyle='#e75480';g.beginPath();g.moveTo(pxi,pyi-15);g.lineTo(pxi-9,pyi);g.lineTo(pxi+9,pyi);g.closePath();g.fill();
+  g.fillStyle='#f2c14e';g.beginPath();g.arc(pxi,pyi-19.5,5.2,0,7);g.fill();   /* blonde hair */
+  g.fillStyle='#ffd9b0';g.beginPath();g.arc(pxi,pyi-18.2,3.9,0,7);g.fill();   /* face */
+  g.fillStyle='#8a5a2b';
+  var dxi=dki?dki.dkx:DKPOS.x,dyi=dki?dki.dky-dki.hop:gy(GIRDS[5],DKPOS.x);
+  g.beginPath();g.ellipse(dxi,dyi-16,21,17,0,0,7);g.fill();   /* bulky gorilla body */
+  g.beginPath();g.ellipse(dxi-14,dyi-26,7,9,0.3,0,7);g.fill();  /* left arm */
+  g.beginPath();g.ellipse(dxi+14,dyi-26,7,9,-0.3,0,7);g.fill(); /* right arm */
+  g.beginPath();g.ellipse(dxi,dyi-38,13,11,0,0,7);g.fill();     /* big head */
+  g.fillStyle='#e8c48a';
+  g.beginPath();g.ellipse(dxi,dyi-36,8.5,6.5,0,0,7);g.fill();   /* tan face */
+  g.fillStyle='#181820';
+  g.beginPath();g.arc(dxi-3.2,dyi-39,1.5,0,7);g.fill();         /* eyes */
+  g.beginPath();g.arc(dxi+3.2,dyi-39,1.5,0,7);g.fill();
+  g.fillStyle='#b5722f';
+  for(var sti=0;sti<BARREL_STACKS.length;sti++){
+    var s=BARREL_STACKS[sti],sy5=gy(GIRDS[5],s.x);
+    var rows=(s.n>=4)?3:2;
+    for(var r=0;r<rows;r++){
+      var per=(r===0)?2:1;
+      for(var q=0;q<per;q++){
+        g.beginPath();g.arc(s.x+((r===0)?(q===0?-7.5:7.5):0),sy5-7-12*r,7,0,7);g.fill();
+      }
+    }
+  }
+  if(dkHold.visible){g.beginPath();g.arc(dkHold.x,dkHold.y,7,0,7);g.fill();}
+  for(var i=0;i<barrels.length;i++){
+    var bl=barrels[i];
+    g.fillStyle='#b5722f';   /* blue barrel = same wood as the rest */
+    g.beginPath();g.arc(bl.x,bl.sy,7,0,7);g.fill();
+    if(bl.blue){
+      /* flammable liquid sign: red diamond with a black flame in the middle,
+         rotating with the barrel so the roll is visible */
+      g.save();g.translate(bl.x,bl.sy);g.rotate((bl.rot||0)+Math.PI/4);
+      g.fillStyle='#d40000';g.fillRect(-3.4,-3.4,6.8,6.8);
+      g.fillStyle='#000000';
+      var s=3.4;
+      g.beginPath();
+      g.moveTo(0,-s);
+      g.bezierCurveTo(s*0.55,-s*0.45,s*0.62,-s*0.05,s*0.38,s*0.32);
+      g.bezierCurveTo(s*0.55,s*0.5,s*0.45,s*0.78,0,s*0.85);
+      g.bezierCurveTo(-s*0.45,s*0.78,-s*0.55,s*0.5,-s*0.38,s*0.32);
+      g.bezierCurveTo(-s*0.62,-s*0.05,-s*0.55,-s*0.45,0,-s);
+      g.closePath();g.fill();
+      g.restore();
+    }
+  }
+  for(var fqi=0;fqi<fires.length;fqi++){
+    /* raging fire: three big tips, each flickering and swaying on its own phase */
+    var fq=fires[fqi];
+    var ffx=fq.x,ffy2=(fq.sy==null)?gy(GIRDS[fq.floor],fq.x):fq.sy;
+    var fphs=[0,2.1,4.4],fcols=['#ff2d00','#ff7b00','#ffc107'];
+    var fxo=[-4,0,4],fxr=[5,4.5,3.5],fxh=[19,24,16];
+    for(var fti=0;fti<3;fti++){
+      var fph=fphs[fti]+fqi*1.9;
+      var fhh=fxh[fti]*(0.8+0.2*Math.sin(time*16+fph));
+      var fxx=fxo[fti]+1.8*Math.sin(time*11+fph*2.3);
+      g.fillStyle=fcols[fti];
+      g.beginPath();
+      g.moveTo(ffx+fxx-fxr[fti],ffy2);
+      g.lineTo(ffx+fxx+1.5*Math.sin(time*9.5+fph),ffy2-fhh);
+      g.lineTo(ffx+fxx+fxr[fti],ffy2);
+      g.fill();
+    }
+  }
+  g.fillStyle='#9c642f';
+  for(i=0;i<monkeys.length;i++){
+    if(monkeys[i].dead)continue;
+    var myk=(monkeys[i].sy!=null)?monkeys[i].sy:gy(GIRDS[monkeys[i].floor],monkeys[i].x);
+    g.fillRect(monkeys[i].x-6,myk-16,12,14);
+  }
+  /* bananas (slip traps) - stand on end, swaying gently (matches the 3D spin) */
+  for(var bqi=0;bqi<bananas.length;bqi++){
+    var bq=bananas[bqi];
+    var bby=(bq.fy!=null)?bq.fy:gy(GIRDS[bq.floor],bq.x);
+    g.save();
+    g.translate(bq.x,bby);
+    if(bq.fy!=null)g.rotate(bq.t*9);   /* tumble while falling */
+    var swy=(bq.fy==null)?Math.sin(time*1.8+bqi*0.7)*1.1:0;
+    g.fillStyle='#ffd23e';
+    g.beginPath();
+    g.moveTo(0,0);
+    g.bezierCurveTo(3.6,-3.5,3.2,-8,1.4+swy*0.5,-12.5);
+    g.lineTo(-1.0+swy*0.5,-12.8);
+    g.bezierCurveTo(-2.6,-8,-1.9,-3.5,0,0);
+    g.fill();
+    g.fillStyle='#9dbf3a';
+    g.fillRect(-0.8+swy*0.5,-14.4,1.6,1.8);   /* green at the stem */
+    g.fillStyle='#6b4a1e';
+    g.fillRect(-0.6+swy*0.5,-15.4,1.2,1.1);   /* brown stem cap */
+    g.fillStyle='#4a3311';
+    g.beginPath();g.arc(0,-0.4,0.9,0,7);g.fill(); /* dark base tip */
+    g.restore();
+  }
+  /* dizzy stars over a slipped Mario */
+  if(P.slipT>0&&P.mode!=='dead'){
+    g.fillStyle='#fff';
+    for(var dsq=0;dsq<3;dsq++){
+      var daq=time*4.5+dsq*2.09;
+      g.beginPath();g.arc(P.x+Math.cos(daq)*9,py-34+Math.sin(daq)*3,1.6,0,7);g.fill();
+    }
+  }
+  if(!(P.hurtT>0&&Math.floor(time*12)%2===1)){   /* hurt flash: Mario blinks out of frame */
+    g.fillStyle='#ffd23e';
+    g.beginPath();g.arc(P.x,py-26,6,0,7);g.fill();
+    g.fillStyle='#e03020';
+    g.fillRect(P.x-7,py-22,14,16);
+    g.fillStyle='#2a3fd4';
+    g.fillRect(P.x-6,py-8,12,8);
+    if(hammerHeld){
+      /* hammer swinging UP over the head -> FORWARD (the way he faces) -> DOWN, same phase as the 3D pose */
+      var liftH=0.5-0.5*Math.cos(time*9);
+      var thH=(Math.PI+0.35)*(1-liftH);   /* 0 = up over head -> PI+0.35 = down (impact) */
+      var shx=P.x+4*P.face,shy=py-15;
+      var hx=shx-P.face*5.2*Math.sin(thH),hy=shy+5.2*Math.cos(thH);
+      var ex=shx+P.face*12.8*Math.sin(thH),ey=shy-12.8*Math.cos(thH);
+      g.strokeStyle='#8f5a26';g.lineWidth=3;
+      g.beginPath();g.moveTo(hx,hy);g.lineTo(ex,ey);g.stroke();
+      g.fillStyle='#666d78';
+      g.fillRect(ex-5,ey-4,10,8);
+      g.lineWidth=1;
+    }
+  }
+}
+/* ===== 3D SYNC ===== */
+function sync3d(dt){
+  if(!D3||!P)return;
+  var t=time;
+  /* --- Mario --- */
+  if(D3.mario){
+    var py3=playerScreenY();
+    /* sink 4px so the feet overlap the visible platform surface and he
+       looks like he's walking on it, not floating above it */
+    /* Mario's shoes sit ~0.3 above his root, so -0.8 puts his feet just ABOVE
+       the top of the top metal bar (gy-0.5): he stands ON TOP of the girder,
+       not inside the bar above the X lattice */
+    D3.mario.position.set(D3.to3d(P.x,py3).x,D3.to3d(0,py3).y-0.8,D3.to3d(P.x,py3).z);
+    /* always keep Mario on the camera side of the girder/ladder plane:
+       same screen position (ortho), but his feet read as being ON TOP of
+       the truss instead of sinking into it when he stands */
+    var mvw=D3.camera.position.clone().normalize();
+    D3.mario.position.addScaledVector(mvw,14);
+    /* correct profile: running LEFT shows his face pointing left, running
+       RIGHT points him right (nose/mustache/brim lead the way); on the
+       ladder his back faces the player */
+    /* stand with his back to the player after a ladder (climb or vaulted-over),
+       otherwise profile; on PAULINE'S girder he faces THE PLAYER (front view) -
+       reaching her is a face-to-face moment; ease the turn so it reads as him
+       stepping around */
+    var tRY=(P.mode==='climb'||marioBack)?Math.PI:(P.face<0?-Math.PI/2:Math.PI/2);
+    if(P.mode!=='climb'&&P.floor===6)tRY=0;   /* Pauline's girder: face the player */
+    var dA=tRY-D3.mario.rotation.y;
+    D3.mario.rotation.y+=Math.atan2(Math.sin(dA),Math.cos(dA))*Math.min(1,dt*10);
+    var mU=D3.mario.userData;
+    /* the swing axis that reads "bipedal on screen" depends on the view:
+       side view (walking/jumping, rotation.y=±90°) -> limbs swing around the
+       local X axis (plane of the screen); back view (ladder, rotation.y=180°)
+       -> they swing around the local Z axis (side-to-side on the rungs).
+       Ease out the axis that ISN'T driving the limbs this frame so switching
+       between views never leaves a limb stuck at an odd angle. */
+    if(P.mode==='climb'){
+      mU.legL.rotation.x*=0.7;mU.legR.rotation.x*=0.7;
+      mU.armL.rotation.x*=0.7;mU.armR.rotation.x*=0.7;
+      D3.mario.rotation.x=0;
+    }else{
+      mU.legL.rotation.z*=0.7;mU.legR.rotation.z*=0.7;
+      mU.armL.rotation.z*=0.7;mU.armR.rotation.z*=0.7;
+      if(P.mode!=='topclimb')D3.mario.rotation.x=0;
+      D3.mario.rotation.z=0;
+    }
+    if(P.mode==='ground'){
+      if(P.moving){
+        var s=Math.sin(P.walk*2);
+        if(P.floor===6){
+          /* facing the player: swing the limbs side-to-side (local Z) so the
+             walk still reads as a walk from the front, not forward/back pumps */
+          mU.legL.rotation.z=s*0.55;mU.legR.rotation.z=-s*0.55;
+          mU.armL.rotation.z=-s*0.75;mU.armR.rotation.z=s*0.75;
+        }else{
+          mU.legL.rotation.x=s*0.7;mU.legR.rotation.x=-s*0.7;
+          mU.armL.rotation.x=-s*0.9;mU.armR.rotation.x=s*0.9;
+        }
+      }else{
+        mU.legL.rotation.x*=0.8;mU.legR.rotation.x*=0.8;
+        mU.armL.rotation.x*=0.8;mU.armR.rotation.x*=0.8;
+      }
+      if(P.slipT>0){
+        /* banana slip: leaning back, legs flailing, arms up in the air */
+        var sfl=Math.sin(time*16);
+        D3.mario.rotation.z=-P.slipDir*0.45+sfl*0.08;
+        mU.legL.rotation.x=1.0+sfl*0.9;
+        mU.legR.rotation.x=0.3-sfl*0.9;
+        mU.armL.rotation.x=2.5+sfl*0.3;
+        mU.armR.rotation.x=-2.5-sfl*0.3;
+      }
+      if(state==='WIN'){
+        /* victory: hop and throw the arms up */
+        D3.mario.position.y+=Math.abs(Math.sin(time*5))*4;
+        mU.armL.rotation.z=2.3;mU.armR.rotation.z=-2.3;
+      }
+      if(hammerHeld){
+        var liftH=0.5-0.5*Math.cos(time*9);       /* 1 = hammer up over the head, 0 = hammer down (impact) */
+         mU.hammer.visible=(hammerTime>2.5)||(Math.floor(time*10)%2===0); /* blink as the time runs out */
+        mU.armR.rotation.x=(Math.PI+0.35)*(1-liftH); /* hammer head: UP over head -> FORWARD (the way he faces) -> DOWN: sweeps the front side */
+        var near=liftH<0.15;
+         if(near&&!hamImpactPrev)mU.hammer.rotation.x=Math.random()*1.6-0.8; /* impact jolt */
+         hamImpactPrev=near;
+         D3.mario.position.y-=1.6*(1-liftH)*(1-liftH);    /* little dip into each slam */
+        mU.armL.rotation.x=0.4;
+      }else{
+        mU.hammer.visible=false;
+        mU.hammer.rotation.x=0;
+         hamImpactPrev=false;
+      }
+      D3.mario.visible=true;
+    }else if(P.mode==='climb'){
+      /* back view: the z-swing IS the side-to-side rung alternation the
+         player sees, which is exactly how ladder climbing should look */
+      mU.hammer.visible=false;
+      if(P.moving){
+        var c=Math.sin(t*14);
+        mU.legL.rotation.z=c*0.8;mU.legR.rotation.z=-c*0.8;
+        mU.armL.rotation.z=-c*0.8;mU.armR.rotation.z=c*0.8;
+      }else{
+        mU.legL.rotation.z*=0.8;mU.legR.rotation.z*=0.8;
+        mU.armL.rotation.z*=0.8;mU.armR.rotation.z*=0.8;
+      }
+      D3.mario.visible=true;
+    }else if(P.mode==='topclimb'){
+      /* climb over the girder the real way: front leg up and OVER the bar,
+         arms grab hold, second leg comes over, then push up and stand.
+         side view, so the swing is around local X (~2.2 rad puts the foot
+         above the hips, i.e. over the girder) */
+      mU.hammer.visible=false;
+      var pv=P.popT;
+      function vseg(a,b){return smooth01(Math.max(0,Math.min(1,(pv-a)/(b-a))));}
+      var leg1=vseg(0.02,0.26);   /* front leg swings up over the bar    */
+      var leg2=vseg(0.26,0.48);   /* second leg comes over the bar       */
+      var st=vseg(0.52,0.72);     /* push up -> settle to standing pose  */
+      var hold=1-st;              /* limbs relaxed while gripping        */
+      mU.legR.rotation.x=2.25*leg1*hold;                    /* front leg over, then down */
+      mU.legL.rotation.x=2.25*leg2*hold-0.5*(1-leg2);       /* back leg: braced, then over */
+      mU.armR.rotation.x=-(2.4+0.3*(leg1-leg2))*hold;       /* gripping arm reaches OUT FRONT (+z) */
+      mU.armL.rotation.x=-(2.4-0.3*(leg1-leg2))*hold;       /* other arm reaches over too */
+      D3.mario.rotation.x=0.16*hold*(leg1>0.4||leg2>0.4);   /* slight lean into the vault */
+      D3.mario.visible=true;
+    }else if(P.mode==='jump'){
+      mU.legL.rotation.x=0.9;mU.legR.rotation.x=-0.5;
+      mU.armL.rotation.x=2.4;mU.armR.rotation.x=2.4;
+      D3.mario.visible=true;
+    }else if(P.mode==='fall'){
+      mU.legL.rotation.x=0.5;mU.legR.rotation.x=-0.3;
+      mU.armL.rotation.x=2.2;mU.armR.rotation.x=-2.2;
+      D3.mario.visible=true;
+    }else{
+      D3.mario.visible=false; /* dead */
+    }
+    /* hurt flash: while invulnerable after losing a heart, Mario blinks out of frame */
+    if(P.hurtT>0&&D3.mario.visible)D3.mario.visible=(Math.floor(t*12)%2===0);
+  }
+  /* --- DK (bouncing on top) --- */
+  if(D3.dk){
+    var stg=(state==='STAGECLEAR'||state==='INTRO'),si=stg?((state==='STAGECLEAR')?scInfo(scT):introInfo(introT)):null;
+    D3.dk.position.copy(D3.to3d(stg?si.dkx:DKPOS.x,stg?si.dky-si.hop:gy(GIRDS[5],DKPOS.x)));
+    var bounce=(state==='PLAYING')?(Math.abs(Math.sin(t*2.2))*4):Math.sin(t*1.4)*1.5;
+    if(state==='PLAYING'&&dkAnim!=='idle')bounce*=0.3; /* steady stance while throwing */
+    if(stg)bounce=0; /* his own moves drive the stage-clear cutscene */
+    D3.dk.position.y+=bounce;
+    var dU=D3.dk.userData;
+    dU.dkHam.visible=false;
+    if(state!=='WIN')D3.dk.rotation.z*=0.8;   /* shed any tumble left over from the win cutscene */
+    /* DK barrel-throw: turns left -> grabs a barrel off the stack -> turns
+       right -> rolls it down the girder with his arm, then settles back */
+    if(state==='PLAYING'&&dkAnim!=='idle'){
+      if(dkAnim==='turnL'){
+        var kl=smooth01(Math.min(1,dkAnimT/DK_ANIM.turnL));
+        D3.dk.rotation.y=-1.25*kl;                        /* face the stacks */
+        dU.armL.rotation.z=0.25-1.1*kl;
+      }else if(dkAnim==='grab'){
+        var kg=smooth01(Math.min(1,dkAnimT/(DK_ANIM.grab*0.7)));
+        D3.dk.rotation.y=-1.25;
+        dU.armL.rotation.z=-0.85-1.05*kg;                 /* reach out to the stack */
+      }else if(dkAnim==='turnR'){
+        var kr=smooth01(Math.min(1,dkAnimT/DK_ANIM.turnR));
+        D3.dk.rotation.y=-1.25+2.5*kr;                    /* swing around to face right */
+        dU.armL.rotation.z=-1.9+2.15*kr;                  /* carrying arm relaxes */
+        dU.armR.rotation.z=-0.25+1.9*kr;                  /* arm swings out to the right */
+      }else{
+        var kk=smooth01(Math.min(1,dkAnimT/DK_ANIM.roll));
+        D3.dk.rotation.y=1.25*(1-kk);                     /* settle back to facing the player */
+        dU.armR.rotation.z=1.65;                          /* pushing the barrel down the girder */
+      }
+    }else{
+      D3.dk.rotation.y+=(0-D3.dk.rotation.y)*Math.min(1,dt*6);
+      /* ease the arms back to the idle bob (no pose pop after a throw) */
+      var armLidle=0.25+Math.sin(t*2.2)*0.15,armRidle=-0.25-Math.sin(t*2.2)*0.15;
+      dU.armL.rotation.z+=(armLidle-dU.armL.rotation.z)*Math.min(1,dt*8);
+      dU.armR.rotation.z+=(armRidle-dU.armR.rotation.z)*Math.min(1,dt*8);
+    }
+    /* STAGE CLEAR cutscene poses: angry -> walk -> climb -> grab -> carry -> stomp x3 */
+    if(stg){
+      var dP=si.phase;
+      if(dP==='angry'){
+        D3.dk.position.y+=Math.abs(Math.sin(t*10))*1.5;    /* pacing his rage */
+        dU.armL.rotation.z=2.6+Math.sin(t*13)*0.3;
+        dU.armR.rotation.z=-2.6-Math.sin(t*13)*0.3;
+      }else if(dP==='walk'){
+        D3.dk.position.y+=Math.abs(Math.sin(t*9))*1.2;
+        dU.armL.rotation.z=0.35*Math.sin(t*9);
+        dU.armR.rotation.z=-0.35*Math.sin(t*9);
+      }else if(dP==='climb'){
+        var clv=Math.sin(t*12);
+        dU.armL.rotation.z=2.6;dU.armR.rotation.z=-2.6;    /* arms up on the rails */
+        if(dU.legL){dU.legL.rotation.z=clv*0.85;dU.legR.rotation.z=-clv*0.85;}
+      }else if(dP==='grab'){
+        var kgv=(scT-SC_T.walkBEnd)/Math.max(0.001,SC_T.grabEnd-SC_T.walkBEnd);
+        dU.armL.rotation.z=-1.3+2.9*kgv;                   /* reach down, then scoop her up */
+        dU.armR.rotation.z=1.3-2.9*kgv;
+      }else if(dP==='carry'){
+        dU.armR.rotation.z=-2.9;                            /* Pauline held up on his right */
+        dU.armL.rotation.z=0.5+0.3*Math.sin(t*10);
+      }else if(dP==='settle'){
+        dU.armL.rotation.z+=(0.3-dU.armL.rotation.z)*Math.min(1,dt*8);
+        dU.armR.rotation.z+=(-0.3-dU.armR.rotation.z)*Math.min(1,dt*8);
+      }else{
+        var sa=si.hop/12;                                   /* arms follow the stomp */
+        dU.armL.rotation.z=0.4+2.3*sa;
+        dU.armR.rotation.z=-0.4-2.3*sa;
+        dU.body.scale.set(1+0.09*(1-sa),1-0.13*(1-sa),1+0.09*(1-sa)); /* squash on landing */
+      }
+      if(dP!=='climb'&&dU.legL){dU.legL.rotation.z*=0.82;dU.legR.rotation.z*=0.82;}
+      if(dP!=='stomp'&&dU.body)dU.body.scale.set(1,1,1);
+      var ryv=(dP==='walk'||dP==='carry')?0.85:(dP==='grab'||dP==='climb')?0.4:0;
+      D3.dk.rotation.y+=(ryv-D3.dk.rotation.y)*Math.min(1,dt*7);
+    }else if(dU.body){dU.body.scale.set(1,1,1);}
+    if(D3.dkBarrel){
+      D3.dkBarrel.visible=dkHold.visible;
+      if(dkHold.visible){
+        /* barrel spinning as DK rolls it: angle from actual travel (angle = dist / radius) */
+        var dhx=dkHold.x-(dkHold.px===undefined?dkHold.x:dkHold.px);
+        dkHold.px=dkHold.x;
+        D3.dkBarrel.position.copy(D3.to3d(dkHold.x,dkHold.y));
+        D3.dkBarrel.rotation.z-=dhx/BR;                   /* clockwise when rolling right */
+      }
+    }
+    /* intermission: DK climbs down a ladder with a hammer, then back up */
+    if(state==='INTERM'){
+      var ip=stateT/6; if(ip<0)ip=0; if(ip>1)ip=1;
+      var lx=360;                                  /* f4-f5 working ladder column (right side) */
+      var topY=gy(GIRDS[5],lx),botY=gy(GIRDS[4],lx);
+      var ly=(ip<0.5)?(topY+(botY-topY)*(ip/0.5)):(botY-(botY-topY)*((ip-0.5)/0.5));
+      D3.dk.position.copy(D3.to3d(lx,ly));
+      dU.dkHam.visible=true;
+      if(Math.random()<dt*2)dU.dkHam.rotation.x=Math.random()*6;
+      dU.armR.rotation.z=2.5;
+    }
+    /* VICTORY: DK tumbles off the building and lands knocked out cold */
+    if(state==='WIN'){
+      var wi=winInfo(stateT);
+      D3.dk.position.copy(D3.to3d(wi.dkx,wi.dky));
+      D3.dk.rotation.y=0;
+      D3.dk.rotation.z+=(wi.rot-D3.dk.rotation.z)*Math.min(1,dt*14);
+      dU.dkHam.visible=false;
+      if(wi.lying){
+        dU.armL.rotation.z=1.1;dU.armR.rotation.z=-1.1;
+        if(dU.legL){dU.legL.rotation.z=0.8;dU.legR.rotation.z=-0.8;}
+        if(dU.body)dU.body.scale.set(1,0.9,1);
+      }
+    }
+  }
+  /* --- Pauline (waving) --- */
+  if(D3.pauline){
+    var pi=(state==='STAGECLEAR')?scInfo(scT):(state==='WIN')?winInfo(stateT):(state==='INTRO')?introInfo(introT):null;
+    var pxi2=pi?pi.px:PAULINE.x,pyi2=pi?pi.py:gy(GIRDS[6],PAULINE.x);
+    D3.pauline.position.copy(D3.to3d(pxi2,pyi2));
+    if(state==='WIN')D3.pauline.position.y+=Math.abs(Math.sin(t*6))*3;   /* happy victory hops */
+    if(pi){
+      /* carried: she flails in panic; set down: waves from the top girder */
+      D3.pauline.userData.arm.rotation.z=pi.carry?1.9+Math.sin(t*11)*0.7:Math.sin(t*3)*0.7+0.6;
+    }else{
+      D3.pauline.userData.arm.rotation.z=Math.sin(t*3)*0.7+0.6;
+      if(state==='PLAYING'&&Math.random()<dt*0.05){
+        /* little panic hop */
+        D3.pauline.position.y+=2;
+      }
+    }
+  }
+  /* --- barrels (pooled) --- */
+  if(D3.barrelPool){
+    var pool=D3.barrelPool,nb=barrels.length;
+    for(var i=0;i<pool.length;i++){
+      if(i<nb){
+        var b=barrels[i];
+        pool[i].visible=true;
+        pool[i].position.copy(D3.to3d(b.x,b.sy));
+        /* rolling: spin angle is driven by the actual distance travelled
+           (no-slip: angle = distance / radius) so it matches roll speed */
+        if(b.rot===undefined)b.rot=0;
+        pool[i].children[0].rotation.z=b.rot;
+        pool[i].children[0].material=(b.blue)?D3.blueMat:pool[i].userData.mat; /* blue barrel = same wood + flammable-liquid sign */
+      }else{
+        pool[i].visible=false;
+      }
+    }
+  }
+  /* --- monkeys (pooled: hop, 4-leg trot, tail wag, FACES THE WALK DIRECTION) --- */
+  if(D3.monkeyPool){
+    var mp=D3.monkeyPool;
+    for(var mi=0;mi<mp.length;mi++){
+      if(mi<monkeys.length){
+        var mk=monkeys[mi];
+        if(mk.dead){mp[mi].visible=false;continue;}
+        mp[mi].visible=true;
+        var hop=Math.abs(Math.sin(mk.ph))*3;
+        mp[mi].position.copy(D3.to3d(mk.x,(mk.sy!=null)?mk.sy:gy(GIRDS[mk.floor],mk.x)));
+        mp[mi].position.y+=hop;
+        /* model front is local +z (Mario's convention): +PI/2 faces screen-right,
+           -PI/2 faces screen-left. Ease the turn so it rotates, not snaps,
+           when it switches girders and reverses. */
+        var md=(GIRDS[mk.floor].dir||-1);
+        var mRY=(md>0)?Math.PI/2:-Math.PI/2;
+        if(mk.mRY===undefined)mk.mRY=mRY;
+        var mDA=mRY-mk.mRY;
+        mk.mRY+=Math.atan2(Math.sin(mDA),Math.cos(mDA))*Math.min(1,dt*10);
+        mp[mi].rotation.y=mk.mRY;
+        var mU=mp[mi].userData;
+        /* diagonal 4-leg trot: front-left + rear-right swing together
+           (swing axis is local X since the front is local +z) */
+        var sw=Math.sin(mk.ph)*0.7;
+        mU.legL.rotation.x=sw;
+        mU.legR.rotation.x=-sw;
+        mU.legFR.rotation.x=-sw;
+        mU.legBL.rotation.x=sw;
+        /* cute tail wag + a little head bob */
+        if(mU.tail)mU.tail.rotation.y=Math.sin(mk.ph*0.5)*0.35;
+        if(mU.head)mU.head.rotation.x=Math.sin(mk.ph)*0.06;
+      }else{
+        mp[mi].visible=false;
+      }
+    }
+  }
+  /* --- hammers (each hidden once grabbed; stays gone until the level restarts) + oil flames --- */
+  if(D3.hamLs){
+    for(var hui=0;hui<D3.hamLs.length;hui++){
+      var hH=D3.hamLs[hui];
+      if(hH.ref.taken){
+        hH.grp.visible=false;
+      }else{
+        hH.grp.visible=true;
+        hH.grp.position.y=hH.baseY+Math.sin(t*2.4+hui*1.7)*2;
+      }
+    }
+  }
+  if(D3.flames){
+    for(var fli=0;fli<D3.flames.length;fli++){
+      var fl=D3.flames[fli];
+      var on=(oilFx>0)?1:0.45;
+      fl.scale.set(on*(1+Math.sin(t*11+fli)*0.18),on*(1+Math.cos(t*9+fli*2)*0.22),on);
+    }
+  }
+  /* --- living fires (up to MAX_FLAMES at once - level 5; every tip flickers) --- */
+  if(D3.firePool){
+    for(var fpq=0;fpq<D3.firePool.length;fpq++){
+      var fGq=D3.firePool[fpq];
+      if(fpq<fires.length){
+        var fq2=fires[fpq];
+        var fy3=(fq2.sy==null)?gy(GIRDS[fq2.floor],fq2.x):fq2.sy;
+        fGq.visible=true;
+        fGq.position.copy(D3.to3d(fq2.x,fy3));
+        /* the girder mesh is tilted by its pitch, but the flame group was left
+           UPRIGHT - tilt the whole fire to the girder's angle (same formula as
+           the girder mesh) so its base runs exactly along the top rail; ease
+           upright while climbing a ladder. */
+        var fG=(fq2.sy==null)?GIRDS[fq2.floor]:null;
+        var fAng=(fG&&fG.dir>0)?-Math.atan(PITCH):(fG&&fG.dir<0?Math.atan(PITCH):0);
+        var fDA=fAng-fGq.rotation.z;
+        fGq.rotation.z+=Math.atan2(Math.sin(fDA),Math.cos(fDA))*Math.min(1,dt*10);
+        var fTps=D3.fireTipsPool[fpq];
+        for(var ft=0;ft<fTps.length;ft++){
+          var tp=fTps[ft];
+          /* raging flicker: fast + slow sines stacked, each tip out of phase */
+          var fl=0.78+0.24*Math.sin(t*16+tp.ph)+0.14*Math.sin(t*29+tp.ph*1.7);
+          tp.m.scale.set(1+0.14*Math.sin(t*23+tp.ph),Math.max(0.45,fl),1);
+          tp.m.position.x=tp.x+1.8*Math.sin(t*11+tp.ph*2.3);   /* tips sway like wind */
+          tp.m.rotation.z=0.22*Math.sin(t*9.5+tp.ph);
+          tp.mat.emissiveIntensity=0.85+0.5*(0.5+0.5*Math.sin(t*19+tp.ph*3.1)); /* glow pulses */
+        }
+      }else{
+        fGq.visible=false;
+      }
+    }
+  }
+  /* --- bananas (slip traps) --- */
+  if(D3.bananaPool){
+    for(var bpq=0;bpq<D3.bananaPool.length;bpq++){
+      var bbq=D3.bananaPool[bpq];
+      if(bpq<bananas.length){
+        var bq2=bananas[bpq];
+        var byy=(bq2.fy!=null)?bq2.fy:gy(GIRDS[bq2.floor],bq2.x);
+        bbq.visible=true;
+        bbq.position.copy(D3.to3d(bq2.x,byy));   /* base sits ON the girder */
+        if(bq2.fy!=null){
+          bbq.rotation.x=bq2.t*9;   /* tumble while falling */
+          bbq.rotation.y=bq2.t*5;
+        }else{
+          bbq.rotation.x=0;
+          bbq.rotation.y=t*1.8+bpq*0.7;   /* steady Y-axis spin while standing */
+        }
+      }else{
+        bbq.visible=false;
+      }
+    }
+  }
+  /* --- WWI bi-planes: patrol high behind the building (King Kong overfly) --- */
+  if(D3.planes){
+    var plShow=(state!=='TITLE')&&((state!=='INTRO')||(introT>=INTRO_T.planeStart));
+    for(var pji=0;pji<D3.planes.length;pji++){
+      (function(pr){
+        var d=pr.def,lt=time-d.delay;
+        pr.grp.visible=plShow&&lt>=0;
+        if(!pr.grp.visible)return;
+        var span=W+160;
+        var px=(W+80)-((lt*d.sp)%span);      /* right to left, nose facing left like the photo */
+        var py=d.y+Math.sin(lt*1.6+d.ph)*3.5;
+        var pv=D3.to3d(px,py);
+        pv.addScaledVector(D3.camDir,-120);       /* BEHIND the girders */
+        pr.grp.position.copy(pv);
+        pr.grp.rotation.z=Math.sin(lt*1.6+d.ph)*0.07;   /* gentle bank into the bob */
+        pr.grp.rotation.x=Math.sin(lt*0.8+d.ph)*0.05;
+        pr.grp.rotation.y=Math.sin(lt*0.5+d.ph)*0.06;   /* subtle yaw wobble */
+        pr.prop.rotation.x+=dt*42;                    /* rotary engine + prop */
+      })(D3.planes[pji]);
+    }
+  }
+  /* --- camera --- */
+  var sh=shakeAmp*(0.5+Math.random());
+  D3.camera.position.x=(Math.random()-0.5)*sh;
+  D3.camera.position.y=42+(Math.random()-0.5)*sh;
+  D3.camera.lookAt(0,0,0);
+  D3.renderer.render(D3.scene,D3.camera);
+}
+/* ===== HUD + MAIN RENDER ===== */
+function updateLives(){
+  var el=document.getElementById('lives');
+  el.innerHTML='';
+  for(var i=0;i<Math.min(lives,6);i++){
+    var sp=document.createElement('span');
+    el.appendChild(sp);
+  }
+}
+function updateHearts(){
+  var el=document.getElementById('hearts');
+  if(!el)return;
+  el.innerHTML='';
+  for(var i=0;i<MAX_HEARTS;i++){
+    var s=document.createElement('span');
+    s.textContent='\u2665';
+    if(i>=hearts)s.className='off';
+    el.appendChild(s);
+  }
+}
+function updateHUD(){
+  document.getElementById('score').textContent=String(score).padStart(6,'0');
+  document.getElementById('high').textContent=String(Math.max(high,score)).padStart(6,'0');
+  document.getElementById('level').textContent='L'+level;
+  updateLives();
+  updateHearts();
+}
+function render(dt){
+  var g=ovCtx;
+  g.clearRect(0,0,W,H);
+  if(!D3&&state!=='TITLE'){
+    /* no-WebGL fallback: 2D Camel silhouettes on the background canvas */
+    var showPlanes=(state!=='INTRO')||(introT>=INTRO_T.planeStart);
+    if(showPlanes){
+      paintBG();
+      drawPlanes();
+    }
+  }
+  sync3d(dt);
+  if(!D3)drawFallback(g);
+  drawState(g);
+  drawFX(g);
+  updateHUD();
+}
+/* ===== MAIN LOOP ===== */
+var lastTs=0;
+function frame(ts){
+  requestAnimationFrame(frame);
+  if(!lastTs)lastTs=ts;
+  var dt=(ts-lastTs)/1000;
+  lastTs=ts;
+  if(dt>0.05)dt=0.05;
+  time+=dt;
+  if(shakeAmp>0){
+    shakeT-=dt;
+    if(shakeT<=0){shakeAmp=0;}
+  }
+  if(actx)musicUpdate();
+  pollGamepad();
+  if(!paused)update(dt);
+  render(dt);
+}
+requestAnimationFrame(frame);
+/* ===== INPUT WIRING ===== */
+function handleStartInput(){
+  if(state==='TITLE'){
+    initAudio();
+    startFromTitle();
+  }else if(state==='GAMEOVER'){
+    if(stateT>0.5)resetGame();
+  }else if(state==='INTERM'){
+    skipInterm();
+  }else if(state==='INTRO'){
+    skipIntro();
+  }else if(state==='WIN'){
+    if(stateT>0.5)toTitle();   /* victory cutscene done -> back to title */
+  }else if(paused){
+    togglePause();
+  }
+}
+window.addEventListener('keydown',function(e){
+  var k=e.key;
+  if(k==='ArrowLeft'||k==='a')input.left=true;
+  else if(k==='ArrowRight'||k==='d')input.right=true;
+  else if(k==='ArrowUp'||k==='w')input.up=true;
+  else if(k==='ArrowDown'||k==='s')input.down=true;
+  else if(k===' '||k==='z'||k==='x'||k==='Enter'){
+    if(state==='PLAYING'){jumpQueued=true;if(!e.repeat)flashJump();}
+    else handleStartInput();
+  }
+  else if(k==='p'||k==='P')togglePause();
+  else if(k==='m'||k==='M')toggleMute();
+  else if(k==='c'||k==='C'){toggleCheat();e.preventDefault();}
+  else if(k==='r'||k==='R'){
+    if(state!=='TITLE')resetGame();
+  }
+  else if(k==='l'||k==='L'){
+    /* L = clear the current level (only while cheat mode is on) */
+    if(cheatMode&&state==='PLAYING')levelClear();
+  }
+  else if(k==='f'||k==='F'){
+    enterFullscreen();
+  }
+  else if(k==='Escape')return;
+  else if(state==='TITLE'||state==='GAMEOVER'||state==='INTERM'||state==='INTRO'||state==='WIN'){
+    handleStartInput();
+  }
+  if(k===' '||k.indexOf('Arrow')===0)e.preventDefault();
+  /* mirror direction keys onto the virtual joystick */
+  var kd=kbDirKey(k);
+  if(kd){
+    if(kbOrder.indexOf(kd)<0)kbOrder.push(kd);
+    vSrc='kb';
+    kbJoy();
+  }
+});
+window.addEventListener('keyup',function(e){
+  var k=e.key;
+  var ku=kbDirKey(k);
+  if(ku){
+    var i=kbOrder.indexOf(ku);
+    if(i>=0)kbOrder.splice(i,1);
+    /* never stomp a direction the joystick / gamepad is still holding */
+    releaseDir(ku);
+    if(vSrc==='kb')kbJoy();
+  }
+});
+/* --- direction arbitration: keyboard / gamepad / virtual joystick all
+   coexist. A source may assert its direction freely, but may only CLEAR a
+   direction if no other source is currently holding it. (Previously the
+   per-frame gamepad poll clobbered input.* based on kbOrder alone, which
+   silently killed the virtual joystick once a gamepad had been used.) --- */
+var joyHeld=null;                        /* 'l'|'r'|'u'|'d'|null held by the stick */
+var gpHeld={l:false,r:false,u:false,d:false};
+function setDir(dir,v){
+  if(dir==='l')input.left=v;
+  else if(dir==='r')input.right=v;
+  else if(dir==='u')input.up=v;
+  else input.down=v;
+}
+function releaseDir(dir){
+  if(kbOrder.indexOf(dir)>=0)return;
+  if(gpHeld[dir])return;
+  if(joyHeld===dir)return;
+  setDir(dir,false);
+}
+/* --- joystick --- */
+var joyId=null;
+document.getElementById('joyBase').addEventListener('pointerdown',function(e){
+  e.preventDefault();
+  initAudio();
+  try{this.setPointerCapture(e.pointerId);}catch(_){}
+  joyId=e.pointerId;
+  this.classList.add('active');
+  joyMove(e);
+});
+document.getElementById('joyBase').addEventListener('pointermove',function(e){
+  if(e.pointerId!==joyId)return;
+  joyMove(e);
+});
+function joyEnd(e){
+  if(e.pointerId!==joyId)return;
+  joyId=null;
+  /* only drop the direction the stick was holding, if nobody else holds it */
+  var prev=joyHeld;
+  joyHeld=null;
+  if(prev)releaseDir(prev);
+  document.getElementById('joyKnob').style.transform='translate(0px,0px)';
+  document.getElementById('joyStick').style.transform='rotate(0deg) scaleY(0)';
+  document.getElementById('joyBase').classList.remove('active');
+}
+document.getElementById('joyBase').addEventListener('pointerup',joyEnd);
+document.getElementById('joyBase').addEventListener('pointercancel',joyEnd);
+document.getElementById('joyBase').addEventListener('lostpointercapture',joyEnd);
+function joyMove(e){
+  var r=document.getElementById('joyBase').getBoundingClientRect();
+  var kr=document.getElementById('joyKnob').getBoundingClientRect();
+  var cx=r.left+r.width/2,cy=r.top+r.height/2;
+  var max=r.width/2-(kr.width/2);
+  var dx=e.clientX-cx,dy=e.clientY-cy,dist=Math.sqrt(dx*dx+dy*dy);
+  if(dist>max){var s=max/dist;dx*=s;dy*=s;dist=max;}
+  document.getElementById('joyKnob').style.transform='translate('+dx+'px,'+dy+'px)';
+  /* metal pole: points from base center toward the knob, stretches with distance */
+  var ang=dist>0?Math.atan2(dy,dx)*180/Math.PI+90:0;
+  document.getElementById('joyStick').style.transform='rotate('+ang+'deg) scaleY('+(dist/max)+')';
+  /* only the dominant axis is acknowledged -> never a diagonal */
+  var dz=max*0.25,hd=null;
+  if(dist>=dz){
+    if(Math.abs(dx)>=Math.abs(dy)){if(dx<0)hd='l';else hd='r';}
+    else{if(dy<0)hd='u';else hd='d';}
+  }
+  /* the stick takes over the direction it points at (latest input wins),
+     but never clobbers a direction the keyboard / gamepad still holds,
+     and restores its previous direction when the stick moves off it */
+  var prev=joyHeld;
+  joyHeld=hd;
+  if(prev&&prev!==hd)releaseDir(prev);
+  if(hd)setDir(hd,true);
+}
+/* --- jump button --- */
+var jb=document.getElementById('jumpBtn');
+jb.addEventListener('pointerdown',function(e){
+  e.preventDefault();
+  initAudio();
+  if(state==='PLAYING')jumpQueued=true;
+  else handleStartInput();
+  jb.classList.add('active');
+});
+jb.addEventListener('pointerup',function(){jb.classList.remove('active');});
+jb.addEventListener('pointercancel',function(){jb.classList.remove('active');});
+jb.addEventListener('contextmenu',function(e){e.preventDefault();});
+/* --- jump button pressed-down visual (for keyboard / gamepad jump) --- */
+var jbFlashT=null;
+function flashJump(){
+  jb.classList.add('active');
+  if(jbFlashT)clearTimeout(jbFlashT);
+  jbFlashT=setTimeout(function(){jb.classList.remove('active');jbFlashT=null;},180);
+}
+/* --- virtual joystick mirror: keyboard / gamepad input shown on the stick --- */
+var kbOrder=[],vSrc=null;
+function kbDirKey(k){
+  if(k==='ArrowUp'||k==='w')return 'u';
+  if(k==='ArrowDown'||k==='s')return 'd';
+  if(k==='ArrowLeft'||k==='a')return 'l';
+  if(k==='ArrowRight'||k==='d')return 'r';
+  return null;
+}
+function kbDirFromKey(key){
+  if(key==='r')return{x:1,y:0};
+  if(key==='l')return{x:-1,y:0};
+  if(key==='d')return{x:0,y:1};
+  return{x:0,y:-1};
+}
+function kbJoy(){
+  if(vSrc!=='kb'||joyId!==null)return;
+  var key=kbOrder[kbOrder.length-1];
+  joyShowDir(key?kbDirFromKey(key):null);
+}
+function joyShowDir(dir){
+  if(joyId!==null)return;
+  var knob=document.getElementById('joyKnob'),stick=document.getElementById('joyStick'),base=document.getElementById('joyBase');
+  if(dir){
+    base.classList.add('active');
+    var r=base.getBoundingClientRect(),kr=knob.getBoundingClientRect();
+    var max=r.width/2-(kr.width/2);
+    var dx=dir.x*max*0.75,dy=dir.y*max*0.75;
+    knob.style.transform='translate('+dx+'px,'+dy+'px)';
+    var ang=Math.atan2(dy,dx)*180/Math.PI+90;
+    stick.style.transform='rotate('+ang+'deg) scaleY(0.75)';
+  }else{
+    knob.style.transform='translate(0px,0px)';
+    stick.style.transform='rotate(0deg) scaleY(0)';
+    base.classList.remove('active');
+  }
+}
+/* --- tap to start (outside buttons/joystick) --- */
+var stage=document.getElementById('stage');
+stage.addEventListener('pointerdown',function(e){
+  if(e.target.closest('button')||e.target.closest('#joyBase'))return;
+  initAudio();
+  if(state==='TITLE')startFromTitle();
+  else if(state==='INTERM')skipInterm();
+  else if(state==='INTRO')skipIntro();
+  else if(state==='GAMEOVER'&&stateT>0.5)resetGame();
+  else if(state==='WIN'&&stateT>0.5)toTitle();
+});
+/* --- buttons --- */
+function initAudio(){return ac();}
+function togglePause(){
+  if(state!=='PLAYING'&&state!=='READY')return;
+  paused=!paused;
+  var pb=document.getElementById('pauseBtn');
+  pb.textContent=paused?'▶':'⏸';
+  pb.className=paused?'active':'';
+  if(actx){
+    if(paused){musicMode('off');sfx.pause();}
+    else if(state==='PLAYING')musicMode('play');
+  }
+}
+function toggleMute(){
+  muted=!muted;
+  var mb=document.getElementById('muteBtn');
+  mb.textContent=muted?'🔇':'🔊';
+  mb.className=muted?'active':'';
+}
+document.getElementById('pauseBtn').addEventListener('click',function(){
+  initAudio();
+  togglePause();
+});
+document.getElementById('muteBtn').addEventListener('click',function(){
+  initAudio();
+  toggleMute();
+});
+document.getElementById('restartBtn').addEventListener('click',function(){
+  initAudio();
+  if(state==='TITLE')startFromTitle();
+  else resetGame();
+});
+/* --- fullscreen (the WHOLE page goes fullscreen, not just #stage,
+   so the title, HUD, joystick and buttons stay visible; the stage is
+   sized with CSS so it keeps its 4:3 ratio and everything fits) --- */
+function enterFullscreen(){
+  var el=document.documentElement;
+  var p=el.requestFullscreen||el.webkitRequestFullscreen||el.msRequestFullscreen;
+  if(p){try{var r=p.call(el);if(r&&r.catch)r.catch(function(){});}catch(e){}}
+}
+function exitFullscreen(){
+  if(!(document.fullscreenElement||document.webkitFullscreenElement))return;
+  var p=document.exitFullscreen||document.webkitExitFullscreen;
+  if(p)try{p.call(document);}catch(e){}
+}
+/* 3D canvas resizes itself on window resize; fullscreen resize flows through it too */
+/* --- gamepad --- */
+var gpPrev={jump:false,up:false,down:false,pause:false,mute:false};
+function pollGamepad(){
+  var pads=navigator.getGamepads?navigator.getGamepads():null;
+  var gp=null;
+  if(pads){for(var i=0;i<pads.length;i++){if(pads[i]&&pads[i].connected){gp=pads[i];break;}}}
+  if(!gp){gpHeld.l=gpHeld.r=gpHeld.u=gpHeld.d=false;if(vSrc==='gp')joyShowDir(null);return;}
+  var ax=gp.axes[0]||0,ay=gp.axes[1]||0;
+  var btn=function(i){return gp.buttons[i]&&gp.buttons[i].pressed;};
+  var gl=ax<-0.4||btn(14);  /* stick left OR D-pad left */
+  var gr=ax>0.4||btn(15);   /* stick right OR D-pad right */
+  var up=btn(12)||ay<-0.4;
+  var down=btn(13)||ay>0.4;
+  /* D-pad up/down must drive the input the same way the stick does
+     (previously these were only used to queue jumps, so Mario could
+     never climb/descend ladders from the gamepad) */
+  /* the gamepad asserts its own directions, but must never stomp a
+     direction the keyboard OR the virtual joystick is currently holding */
+  if(gl){input.left=true;}
+  else if(kbOrder.indexOf('l')<0&&joyHeld!=='l')input.left=false;
+  if(gr){input.right=true;}
+  else if(kbOrder.indexOf('r')<0&&joyHeld!=='r')input.right=false;
+  if(up){input.up=true;}
+  else if(kbOrder.indexOf('u')<0&&joyHeld!=='u')input.up=false;
+  if(down){input.down=true;}
+  else if(kbOrder.indexOf('d')<0&&joyHeld!=='d')input.down=false;
+  gpHeld.l=!!gl;gpHeld.r=!!gr;gpHeld.u=!!up;gpHeld.d=!!down;
+  var jump=btn(0)||btn(2)||btn(5);
+  /* NOTE: D-pad / stick up-down must NOT queue a jump - they only climb,
+     matching the keyboard and virtual joystick. Jump is A / X / B. */
+  if(jump&&!gpPrev.jump){
+    if(state==='PLAYING'){jumpQueued=true;flashJump();}
+    else handleStartInput();
+  }
+  if(btn(9)&&!gpPrev.pause)togglePause();
+  if(btn(8)&&!gpPrev.mute)toggleMute();
+  /* mirror gamepad movement onto the virtual joystick */
+  var md=null;
+  if(gl)md={x:-1,y:0};
+  else if(gr)md={x:1,y:0};
+  else if(up)md={x:0,y:-1};
+  else if(down)md={x:0,y:1};
+  if(md){vSrc='gp';joyShowDir(md);}
+  else if(vSrc==='gp')joyShowDir(null);
+  gpPrev={jump:jump,up:up,down:down,pause:btn(9),mute:btn(8)};
+}
+window.addEventListener('gamepaddisconnected',function(){
+  gpPrev={jump:false,up:false,down:false,pause:false,mute:false};
+  gpHeld.l=gpHeld.r=gpHeld.u=gpHeld.d=false;
+  if(vSrc==='gp')joyShowDir(null);
+});
+/* --- back-to-menu (referenced by the inline onclick in the HTML) --- */
+function goToMenu(){
+  exitFullscreen();
+  location.href='index.html';
+}
+window.goToMenu=goToMenu;
+/* --- boot --- */
+resetPositions();
+paintBG();
+updateLives();
+window.DK={reset:resetGame,title:toTitle,state:function(){return state;},
+  P:function(){return P;},barrels:function(){return barrels;},monkeys:function(){return monkeys;},
+  hammer:function(){return {held:hammerHeld,time:hammerTime};},
+  clearBlast:function(){barrels.length=0;monkeys.length=0;fires.length=0;dkSpawnT=60;blueNext=true;},
+  fire:function(){return fires;},
+  set:function(k,v){if(k==='hammerTime')hammerTime=v;if(k==='dkSpawnT')dkSpawnT=v;}};
+})();
+</script>
+</body>
+</html>

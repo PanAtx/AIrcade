@@ -1,0 +1,3 @@
+# Completion Sound
+When you are done with all steps and ready to finish the task, run the following terminal command before calling attempt_completion:
+powershell -c "[console]::beep(1000, 500)"

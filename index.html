@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AIrcade — Arcade games made with AI</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#05050f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AIrcade">
+  <link rel="icon" type="image/png" href="icons/joystick-192.png">
+  <link rel="apple-touch-icon" href="icons/joystick-192.png">
+  <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    });
+  }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --neon-pink:   #ff2fd6;
+      --neon-cyan:   #29f7ff;
+      --neon-yellow: #ffe600;
+      --neon-purple: #b026ff;
+      --bg:          #05010f;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    a, button { -webkit-tap-highlight-color: transparent; }
+    a:focus:not(:focus-visible), button:focus:not(:focus-visible) { outline: none; }
+
+    html, body {
+      height: 100%;
+      overflow-x: hidden;
+      overscroll-behavior: none;
+      background: var(--bg);
+      font-family: 'Orbitron', system-ui, sans-serif;
+      color: #fff;
+    }
+
+    /* ---------- Animated backgrounds ---------- */
+    #starfield {
+      position: fixed;
+      inset: 0;
+      z-index: -3;
+      display: block;
+    }
+
+    .sun {
+      position: fixed;
+      bottom: 34vh;
+      left: 50%;
+      width: min(60vw, 460px);
+      aspect-ratio: 1;
+      transform: translateX(-50%);
+      z-index: -2;
+      border-radius: 50%;
+      background: linear-gradient(#ffe600 0%, #ff9a1f 40%, #ff2fd6 70%, transparent 72%);
+      box-shadow: 0 0 80px 20px rgba(255, 47, 214, .55),
+                  inset 0 -40px 60px rgba(176, 38, 255, .5);
+      -webkit-mask-image: repeating-linear-gradient(to bottom, transparent 0 14px, #000 14px 22px);
+              mask-image: repeating-linear-gradient(to bottom, transparent 0 14px, #000 14px 22px);
+      animation: sunpulse 6s ease-in-out infinite;
+    }
+
+    .grid {
+      position: fixed;
+      left: 50%;
+      bottom: -2vh;
+      width: 300vw;
+      height: 70vh;
+      z-index: -1;
+      transform: translateX(-50%) perspective(220px) rotateX(60deg);
+      transform-origin: bottom center;
+      background-image:
+        linear-gradient(rgba(41, 247, 255, .55) 2px, transparent 2px),
+        linear-gradient(90deg, rgba(255, 47, 214, .55) 2px, transparent 2px);
+      background-size: 60px 60px;
+      animation: gridmove 3s linear infinite;
+      -webkit-mask-image: linear-gradient(to top, #000 20%, transparent 80%);
+              mask-image: linear-gradient(to top, #000 20%, transparent 80%);
+    }
+
+    @keyframes gridmove {
+      from { background-position: 0 0; }
+      to   { background-position: 0 60px; }
+    }
+    @keyframes sunpulse {
+      0%, 100% { box-shadow: 0 0 80px 20px rgba(255,47,214,.5), inset 0 -40px 60px rgba(176,38,255,.5); }
+      50%      { box-shadow: 0 0 120px 40px rgba(41,247,255,.6), inset 0 -40px 60px rgba(176,38,255,.6); }
+    }
+
+    /* ---------- Page content ---------- */
+    .page {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: clamp(30px, 8vh, 90px) 20px 60px;
+    }
+
+    .header { text-align: center; margin-bottom: clamp(30px, 6vh, 70px); }
+
+    .logo {
+      font-family: 'Press Start 2P', monospace;
+      font-size: clamp(2rem, 8vw, 4.5rem);
+      letter-spacing: 3px;
+      color: var(--neon-cyan);
+      text-shadow: 0 0 8px var(--neon-cyan), 0 0 20px var(--neon-cyan), 0 0 40px rgba(41,247,255,.7);
+      animation: flicker 4s infinite;
+    }
+    .logo span {
+      color: var(--neon-pink);
+      text-shadow: 0 0 8px var(--neon-pink), 0 0 20px var(--neon-pink), 0 0 40px rgba(255,47,214,.7);
+    }
+
+    .tagline {
+      margin-top: 22px;
+      font-size: clamp(.7rem, 2.5vw, 1rem);
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--neon-yellow);
+      text-shadow: 0 0 10px rgba(255,230,0,.8);
+    }
+
+    /* ---------- Game cards ---------- */
+    .arcade {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: clamp(24px, 4vw, 48px);
+    }
+
+    .game-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      width: 260px;
+      padding: 34px 26px 30px;
+      text-decoration: none;
+      color: #fff;
+      background: rgba(10, 4, 26, .55);
+      border: 2px solid var(--neon-purple);
+      border-radius: 14px;
+      box-shadow: 0 0 18px rgba(176,38,255,.5), inset 0 0 24px rgba(176,38,255,.15);
+      transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+      backdrop-filter: blur(3px);
+    }
+    .game-card:hover,
+    .game-card:focus-visible {
+      transform: translateY(-10px) scale(1.03);
+      border-color: var(--neon-cyan);
+      box-shadow: 0 0 30px var(--neon-cyan), inset 0 0 30px rgba(41,247,255,.2);
+      outline: none;
+    }
+
+    .game-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 14px;
+      background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.15) 50%, transparent 70%);
+      background-size: 250% 250%;
+      background-position: 200% 0;
+      opacity: 0;
+      transition: opacity .3s;
+      pointer-events: none;
+    }
+    .game-card:hover::after { opacity: 1; animation: sweep 1.2s ease; }
+    @keyframes sweep { to { background-position: -50% 0; } }
+
+    .game-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 1.1rem;
+      color: var(--neon-yellow);
+      text-shadow: 0 0 10px rgba(255,230,0,.9);
+    }
+    .game-desc {
+      font-size: .78rem;
+      letter-spacing: 1px;
+      color: #cfe9ff;
+      min-height: 2.2em;
+      text-align: center;
+    }
+    .play-btn {
+      font-family: 'Press Start 2P', monospace;
+      font-size: .72rem;
+      padding: 10px 14px;
+      border: 1px solid var(--neon-pink);
+      border-radius: 6px;
+      color: var(--neon-pink);
+      text-shadow: 0 0 8px var(--neon-pink);
+      box-shadow: 0 0 10px rgba(255,47,214,.5);
+      animation: blink 1.4s steps(1) infinite;
+    }
+    @keyframes blink { 50% { opacity: .35; } }
+
+    /* ---------- Chiptune toggle ---------- */
+    .music-toggle {
+      position: fixed;
+      top: 18px;
+      right: 18px;
+      z-index: 50;
+      width: 46px;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(6, 10, 32, .72);
+      border: 1px solid rgba(41, 247, 255, .5);
+      border-radius: 10px;
+      color: var(--neon-cyan);
+      font-size: 1.25rem;
+      line-height: 1;
+      cursor: pointer;
+      box-shadow: 0 0 12px rgba(41, 247, 255, .35);
+      transition: transform .15s ease, box-shadow .15s ease, color .15s ease;
+    }
+    .music-toggle:hover {
+      transform: scale(1.08);
+      box-shadow: 0 0 18px rgba(41, 247, 255, .6);
+    }
+    .music-toggle.muted {
+      color: rgba(207, 233, 255, .45);
+      border-color: rgba(207, 233, 255, .25);
+      box-shadow: none;
+    }
+    .music-toggle.muted .note { position: relative; }
+    .music-toggle.muted .note::after {
+      content: '';
+      position: absolute;
+      left: -30%;
+      top: 50%;
+      width: 160%;
+      height: 2px;
+      background: currentColor;
+      transform: rotate(-45deg);
+    }
+
+    .footer {
+      margin-top: clamp(40px, 8vh, 90px);
+      font-size: .7rem;
+      letter-spacing: 2px;
+      color: rgba(207, 233, 255, .6);
+      text-align: center;
+    }
+
+    @keyframes flicker {
+      0%, 92%, 100% { opacity: 1; }
+      93% { opacity: .6; }
+      95% { opacity: .85; }
+      97% { opacity: .5; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="starfield"></canvas>
+  <div class="sun"></div>
+  <div class="grid"></div>
+  <button class="music-toggle" id="musicToggle" type="button" aria-pressed="true" aria-label="Toggle chiptune music" title="Toggle music"><span class="note">♪</span></button>
+
+  <main class="page">
+    <header class="header">
+      <h1 class="logo">AI<span>rcade</span></h1>
+      <p class="tagline">Arcade games made with AI</p>
+    </header>
+
+    <section class="arcade" id="game-list">
+      <a class="game-card" href="pacman.html">
+        <h2 class="game-title">PAC-MAN</h2>
+        <p class="game-desc">Chomp dots. Dodge ghosts. Beat the maze.</p>
+        <span class="play-btn">INSERT COIN ▶</span>
+      </a>
+      <a class="game-card" href="donkeykong.html">
+        <h2 class="game-title">DONKEY KONG</h2>
+        <p class="game-desc">Dodge barrels. Smash monkeys. Climb the girders.</p>
+        <span class="play-btn">INSERT COIN ▶</span>
+      </a>
+      <a class="game-card" href="poleposition8bit.html">
+        <h2 class="game-title">POLE POSITION</h2>
+        <p class="game-desc">8-bit arcade racer. Steer the curve, beat the clock.</p>
+        <span class="play-btn">INSERT COIN ▶</span>
+      </a>
+    </section>
+
+    <footer class="footer">
+      <p>© <span id="year"></span> AIrcade · Powered by nostalgia &amp; AI</p>
+    </footer>
+  </main>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // ---------- Animated starfield ----------
+    const canvas = document.getElementById('starfield');
+    const ctx = canvas.getContext('2d');
+    let stars = [], W, H;
+    const COLORS = ['#ffffff', '#29f7ff', '#ff2fd6', '#ffe600'];
+
+    function resize() {
+      W = canvas.width  = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      initStars();
+    }
+
+    function initStars() {
+      const count = Math.floor((W * H) / 6000);
+      stars = Array.from({ length: count }, () => ({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        z: Math.random(),
+        r: Math.random() * 1.6 + 0.3,
+        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+        tw: Math.random() * Math.PI * 2,
+      }));
+    }
+
+    let t = 0;
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      t += 0.02;
+      for (const s of stars) {
+        s.y += (s.z + 0.1) * 0.6;
+        if (s.y > H) { s.y = -2; s.x = Math.random() * W; }
+        const twinkle = 0.55 + 0.45 * Math.sin(t * 2 + s.tw);
+        ctx.globalAlpha = twinkle * (0.4 + s.z * 0.6);
+        ctx.fillStyle = s.color;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r * (0.6 + s.z), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      requestAnimationFrame(draw);
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+    draw();
+
+    // ---------- C64 crack-intro chiptune (Web Audio, no external files) ----------
+    (function chiptune() {
+      const btn = document.getElementById('musicToggle');
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { btn.style.display = 'none'; return; }
+      const ctx = new AC();
+      const master = ctx.createGain();
+      master.gain.value = 0.9;
+      master.connect(ctx.destination);
+
+      const TEMPO = 140, STEP = 60 / TEMPO / 4; // 16th note
+
+      // 25% duty pulse wave (SID-style voice, much grittier than a square)
+      function pulseWave(duty) {
+        const N = 24, real = new Float32Array(N + 1), imag = new Float32Array(N + 1);
+        for (let i = 1; i <= N; i++) imag[i] = (2 / (i * Math.PI)) * Math.sin(Math.PI * i * duty);
+        return ctx.createPeriodicWave(real, imag);
+      }
+      const SEMI = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+      const freq = n => {
+        const m = /^([A-G])(b?)(\d)$/.exec(n);
+        return 440 * Math.pow(2, (SEMI[m[1]] - (m[2] ? 1 : 0) + (+m[3] - 4) * 12 - 9) / 12);
+      };
+      const mf = m => 440 * Math.pow(2, (m - 69) / 12);
+
+      // Lead: continuous SID voice with vibrato + feedback echo
+      const leadOsc = ctx.createOscillator();
+      leadOsc.setPeriodicWave(pulseWave(0.25));
+      const leadGain = ctx.createGain(); leadGain.gain.value = 0;
+      leadOsc.connect(leadGain);
+      leadGain.connect(master);
+      const vib = ctx.createOscillator(); vib.frequency.value = 5.8;
+      const vibGain = ctx.createGain(); vibGain.gain.value = 7;
+      vib.connect(vibGain); vibGain.connect(leadOsc.frequency);
+      const echo = ctx.createDelay(1); echo.delayTime.value = STEP * 3;
+      const echoFilt = ctx.createBiquadFilter(); echoFilt.type = 'lowpass'; echoFilt.frequency.value = 2200;
+      const echoFB = ctx.createGain(); echoFB.gain.value = 0.38;
+      const echoWet = ctx.createGain(); echoWet.gain.value = 0.45;
+      leadGain.connect(echo);
+      echo.connect(echoFilt); echoFilt.connect(echoFB); echoFB.connect(echo);
+      echoFilt.connect(echoWet); echoWet.connect(master);
+
+      // Bass: continuous sawtooth voice through a low-pass
+      const bassOsc = ctx.createOscillator(); bassOsc.type = 'sawtooth';
+      const bassFilt = ctx.createBiquadFilter(); bassFilt.type = 'lowpass'; bassFilt.frequency.value = 900;
+      const bassGain = ctx.createGain(); bassGain.gain.value = 0;
+      bassOsc.connect(bassFilt); bassFilt.connect(bassGain); bassGain.connect(master);
+
+      leadOsc.start(0); vib.start(0); bassOsc.start(0);
+
+      // Shared noise buffer for drums
+      const noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate);
+      const nch = noiseBuf.getChannelData(0);
+      for (let i = 0; i < nch.length; i++) nch[i] = Math.random() * 2 - 1;
+
+      const R = 0; // rest
+      // 16-bar C-minor loop, 16 sixteenth notes per bar
+      const LEAD = [
+        // ---- section A ----
+        ['C5',R, 'E5',R, 'G5',R, 'C6',R,  'G5',R, 'E5',R, 'G5',R, 'C6',R],
+        ['A4',R, 'C5',R, 'E5',R, 'A5',R,  'E5',R, 'C5',R, 'E5',R, 'A5',R],
+        ['Bb4',R,'Db5',R,'F5',R, 'Bb5',R, 'F5',R, 'Db5',R,'F5',R, 'Bb5',R],
+        ['G4',R, 'C5',R, 'E5',R, 'G5',R,  'C6',R, 'Bb5',R,'A5',R, 'G5',R],
+        ['C5',R, 'E5',R, 'G5',R, 'C6',R,  'G5',R, 'E5',R, 'G5',R, 'C6',R],
+        ['Ab4',R,'C5',R, 'Eb5',R,'Ab5',R, 'Eb5',R,'C5',R, 'Eb5',R,'Ab5',R],
+        ['Bb4',R,'Db5',R,'F5',R, 'Bb5',R, 'F5',R, 'Db5',R,'F5',R, 'Bb5',R],
+        ['G4',R, 'C5',R, 'E5',R, 'G5',R,  'C6',R, 'Bb5',R,'A5','G5','E5',R],
+        // ---- section B ----
+        ['C5','D5','E5','F5','G5','Ab5','Bb5','C6','C5','D5','E5','F5','G5','Ab5','Bb5','C6'],
+        ['Ab5',R, 'C6',R, 'Ab5',R, 'G5',R, 'Ab5',R, 'C6',R, 'Ab5',R, 'G5',R],
+        ['Eb5',R,'G5',R, 'Bb5',R,'Db6',R, 'Bb5',R,'G5',R, 'Eb5',R, 'Db6',R],
+        ['G5','Ab5','Bb5','C6','Ab5','Bb5','C6','Ab5','Bb5','C6','Ab5','Bb5','C6','Ab5','Bb5','C6'],
+        ['C5',R, 'E5',R, 'G5',R, 'C6',R,  'G5',R, 'E5',R, 'G5',R, 'C6',R],
+        ['Bb4',R,'Db5',R,'F5',R, 'Bb5',R, 'F5',R, 'Db5',R,'F5',R, 'Bb5',R],
+        ['Eb5',R,'G5',R, 'Bb5',R,'Eb6',R, 'Bb5',R,'G5',R, 'Eb5',R, 'Db6',R],
+        ['C6',R, R, R, 'Bb5',R, R, R, 'A5',R, R, R, 'G5','E5', R, R]
+      ];
+      // Bass root per bar (MIDI), pumped in 16ths one octave alternating
+      const BASSROOTS = [36,44,46,43, 36,44,46,43, 36,36,38,43, 36,46,38,36];
+
+      // ---- Drum voices (noise channel + kick) ----
+      function kick(t) {
+        const o = ctx.createOscillator(); o.type = 'sine';
+        o.frequency.setValueAtTime(150, t);
+        o.frequency.exponentialRampToValueAtTime(40, t + 0.1);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.5, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+        o.connect(g); g.connect(master);
+        o.start(t); o.stop(t + 0.15);
+      }
+      function noiseHit(t, filterType, freqv, gainv, dur) {
+        const s = ctx.createBufferSource(); s.buffer = noiseBuf;
+        const f = ctx.createBiquadFilter(); f.type = filterType; f.frequency.value = freqv;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(gainv, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        s.connect(f); f.connect(g); g.connect(master);
+        s.start(t, Math.random() * 0.4); s.stop(t + dur + 0.02);
+      }
+      const snare = (t) => noiseHit(t, 'bandpass', 1800, 0.25, 0.09);
+      const hatC  = (t) => noiseHit(t, 'highpass', 7000, 0.04, 0.03);
+      const hatO  = (t) => noiseHit(t, 'highpass', 7000, 0.055, 0.08);
+      function roll(t) {
+        for (let k = 0; k < 8; k++) noiseHit(t + k * STEP / 8, 'highpass', 8000, 0.03 + k * 0.004, 0.02);
+      }
+
+      // ---- Look-ahead 16th-note sequencer ----
+      let step = 0, nextTime = ctx.currentTime + 0.15, lastLeadF = 0;
+      function scheduler() {
+        while (nextTime < ctx.currentTime + 0.12) {
+          const t = nextTime;
+          const bar = (step / 16) | 0, s = step % 16;
+
+          // lead: portamento gliss between notes (SID style)
+          const n = LEAD[bar][s];
+          if (n) {
+            const f = freq(n);
+            leadGain.gain.cancelScheduledValues(t);
+            leadGain.gain.setValueAtTime(0.0001, t);
+            leadGain.gain.linearRampToValueAtTime(0.055, t + 0.01);
+            leadGain.gain.exponentialRampToValueAtTime(0.001, t + STEP * 0.92);
+            if (lastLeadF && lastLeadF !== f) {
+              leadOsc.frequency.cancelScheduledValues(t);
+              leadOsc.frequency.setValueAtTime(lastLeadF, t);
+              leadOsc.frequency.exponentialRampToValueAtTime(f, t + 0.04);
+            } else {
+              leadOsc.frequency.setValueAtTime(f, t);
+            }
+            lastLeadF = f;
+          }
+
+          // bass: pumping 16th roots, octave alternating
+          const bf = mf(BASSROOTS[bar] + (s % 2) * 12);
+          bassOsc.frequency.setValueAtTime(bf, t);
+          bassGain.gain.cancelScheduledValues(t);
+          bassGain.gain.setValueAtTime(0.17, t);
+          bassGain.gain.exponentialRampToValueAtTime(0.045, t + STEP * 0.9);
+
+          // drums: 4-on-floor kick, backbeat snare, hats, rolls into the loop points
+          if (s % 4 === 0) kick(t);
+          if (s === 4 || s === 12) snare(t);
+          if ((bar === 7 || bar === 15) && s >= 12) roll(t);
+          else if (s % 4 === 2) hatO(t); else hatC(t);
+
+          nextTime += STEP;
+          step = (step + 1) % 256; // 16 bars, loops forever
+        }
+      }
+      setInterval(scheduler, 30);
+
+      let muted = false;
+      try { muted = localStorage.getItem('aiarcade-muted') === '1'; } catch (e) {}
+      if (muted) {
+        btn.classList.add('muted');
+        btn.setAttribute('aria-pressed', 'false');
+      }
+      // Try to start immediately — an installed PWA launched from the home
+      // screen is the best case for autoplay. If the browser still blocks it
+      // (it requires one user interaction before allowing audio), unlock on
+      // the very first tap/click/key, or when the page regains focus.
+      function tryStart() { if (!muted) ctx.resume().catch(() => {}); }
+      tryStart();
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) tryStart(); });
+      window.addEventListener('pageshow', tryStart);
+      window.addEventListener('focus', tryStart);
+      function armAutoplay() {
+        tryStart();
+        window.removeEventListener('pointerdown', armAutoplay);
+        window.removeEventListener('keydown', armAutoplay);
+        window.removeEventListener('touchstart', armAutoplay);
+      }
+      window.addEventListener('pointerdown', armAutoplay);
+      window.addEventListener('keydown', armAutoplay);
+      window.addEventListener('touchstart', armAutoplay, { passive: true });
+
+      btn.addEventListener('click', () => {
+        muted = !muted;
+        btn.classList.toggle('muted', muted);
+        btn.setAttribute('aria-pressed', String(!muted));
+        try { localStorage.setItem('aiarcade-muted', muted ? '1' : '0'); } catch (e) {}
+        if (muted) ctx.suspend(); else ctx.resume().catch(() => {});
+      });
+    })();
+  </script>
+  <script>
+    /* Prevent accidental mobile pull-to-refresh: a downward swipe at the top of
+       the page (e.g. an accidental swipe-down during gameplay) used to reload the
+       page. CSS `overscroll-behavior: none` handles modern browsers; this blocks
+       the down-swipe-at-the-top gesture as a fallback for browsers/versions that
+       ignore it (e.g. older iOS Safari). It only blocks the pull-down gesture,
+       so normal scrolling and taps still work. */
+    (function () {
+      var startY = 0, THRESHOLD = 8;
+      function atTop() {
+        return (window.pageYOffset ||
+                document.documentElement.scrollTop ||
+                document.body.scrollTop || 0) <= 0;
+      }
+      document.addEventListener('touchstart', function (e) {
+        startY = e.touches[0].clientY;
+      }, { passive: true });
+      document.addEventListener('touchmove', function (e) {
+        if (atTop() && e.touches[0].clientY - startY > THRESHOLD) e.preventDefault();
+      }, { passive: false });
+    })();
+  </script>
+</body>
+</html>

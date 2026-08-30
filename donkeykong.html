@@ -3412,10 +3412,31 @@ function exitFullscreen(){
 /* 3D canvas resizes itself on window resize; fullscreen resize flows through it too */
 /* --- gamepad --- */
 var gpPrev={jump:false,up:false,down:false,pause:false,mute:false};
+/* This machine can enumerate SEVERAL gamepads at once (e.g. a Razer "Unknown
+   Gamepad" AND a "STANDARD GAMEPAD"). Reading only the first slot left the
+   pad the player actually holds completely dead, so MERGE every connected
+   pad into one virtual pad: union of pressed buttons, max-magnitude axes. */
+function mergedGamepad(){
+  var pads=null;
+  try{pads=navigator.getGamepads?navigator.getGamepads():null;}catch(err){return null;}
+  if(!pads)return null;
+  var any=false,nBtn=0,pressed={},axes=[];
+  for(var i=0;i<pads.length;i++){
+    var p=pads[i];
+    if(!p||!p.connected)continue;
+    var pb=p.buttons||[],pa=p.axes||[];
+    if(pb.length||pa.length)any=true;
+    if(pb.length>nBtn)nBtn=pb.length;
+    for(var bi=0;bi<pb.length;bi++){if(pb[bi]&&(pb[bi].pressed||(pb[bi].value||0)>0.5))pressed[bi]=true;}
+    for(var ai=0;ai<pa.length;ai++){var v=pa[ai]||0;if(Math.abs(v)>Math.abs(axes[ai]||0))axes[ai]=v;}
+  }
+  if(!any)return null;
+  var buttons=[];
+  for(var k=0;k<nBtn;k++)buttons.push({pressed:!!pressed[k],value:pressed[k]?1:0});
+  return{connected:true,axes:axes,buttons:buttons};
+}
 function pollGamepad(){
-  var pads=navigator.getGamepads?navigator.getGamepads():null;
-  var gp=null;
-  if(pads){for(var i=0;i<pads.length;i++){if(pads[i]&&pads[i].connected){gp=pads[i];break;}}}
+  var gp=mergedGamepad();
   if(!gp){gpHeld.l=gpHeld.r=gpHeld.u=gpHeld.d=false;if(vSrc==='gp')joyShowDir(null);return;}
   var ax=gp.axes[0]||0,ay=gp.axes[1]||0;
   var btn=function(i){return gp.buttons[i]&&gp.buttons[i].pressed;};

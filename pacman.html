@@ -1569,9 +1569,32 @@ document.getElementById('restartBtn').addEventListener('click',function(e){e.sto
 document.getElementById('backBtn').addEventListener('click',function(e){e.stopPropagation();goToMenu();});
 /* ===== GAMEPAD ===== */
 var gpPrevButtons=[],STICK_DEADZONE=0.5;
+/* This machine can enumerate SEVERAL gamepads at once (e.g. a Razer
+   "Unknown Gamepad" AND a "STANDARD GAMEPAD"). Reading only the first slot
+   left the pad the player actually holds completely dead, so MERGE every
+   connected pad into one virtual pad: union of pressed buttons,
+   max-magnitude axes. */
+function mergedGamepad(){
+  var pads=null;
+  try{pads=navigator.getGamepads?navigator.getGamepads():null;}catch(err){return null;}
+  if(!pads)return null;
+  var any=false,nBtn=0,pressed={},axes=[];
+  for(var i=0;i<pads.length;i++){
+    var p=pads[i];
+    if(!p||!p.connected)continue;
+    var pb=p.buttons||[],pa=p.axes||[];
+    if(pb.length||pa.length)any=true;
+    if(pb.length>nBtn)nBtn=pb.length;
+    for(var bi=0;bi<pb.length;bi++){if(pb[bi]&&(pb[bi].pressed||(pb[bi].value||0)>0.5))pressed[bi]=true;}
+    for(var ai=0;ai<pa.length;ai++){var v=pa[ai]||0;if(Math.abs(v)>Math.abs(axes[ai]||0))axes[ai]=v;}
+  }
+  if(!any)return null;
+  var buttons=[];
+  for(var k=0;k<nBtn;k++)buttons.push({pressed:!!pressed[k],value:pressed[k]?1:0});
+  return{connected:true,axes:axes,buttons:buttons};
+}
 function pollGamepad(){
-  var gps=navigator.getGamepads?navigator.getGamepads():[],gp=null;
-  for(var i=0;i<gps.length;i++){if(gps[i]&&gps[i].connected){gp=gps[i];break;}}
+  var gp=mergedGamepad();
   if(!gp)return;ac();
   var btns=gp.buttons;
   var btnDown=function(idx){return btns[idx]&&btns[idx].pressed;};

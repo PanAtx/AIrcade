@@ -1,11 +1,12 @@
 /* Pac-Man PWA service worker: offline app shell + runtime caching. */
-const CACHE = 'pacman-v15-gpfix';
+const CACHE = 'pacman-v16-galaga';
 const ASSETS = [
   './',
   './index.html',
   './pacman.html',
   './donkeykong.html',
   './poleposition8bit.html',
+  './galaga.html',
   './manifest.json',
   './icons/joystick-192.png',
   './icons/joystick-512.png',

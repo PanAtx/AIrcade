@@ -334,7 +334,7 @@ var ebGlowGeo=new THREE.BoxGeometry(9,13,3);
 var ebCoreMat=new THREE.MeshBasicMaterial({color:0xff6a6a});
 var ebGlowMat=new THREE.MeshBasicMaterial({color:0xff2a2a,transparent:true,opacity:0.4,blending:THREE.AdditiveBlending,depthWrite:false});
 /* ================= SHIP BUILDERS (procedural low-poly meshes) ================= */
-var matCache={},geoCache={};
+var matCache={},geoCache={},glowMatCache={},shapeCache={};
 function mat(c){ if(!matCache[c]) matCache[c]=new THREE.MeshBasicMaterial({color:c}); return matCache[c]; }
 function B(w,h,d,c){
   var k=w+'x'+h+'x'+d;
@@ -342,112 +342,227 @@ function B(w,h,d,c){
   return new THREE.Mesh(geoCache[k],mat(c));
 }
 function at(m,x,y,z){ m.position.set(x||0,y||0,z||0); return m; }
-/* Wing on a pivot group so it can flap (rotate) every frame */
-function wingPivot(g,w,h,d,c,s){
+/* Neon additive glow accent (modern arcade pop) */
+function glow(w,h,d,c,op){
+  var op2=(op==null?0.35:op);
+  var k=w+'x'+h+'x'+d; if(!geoCache[k]) geoCache[k]=new THREE.BoxGeometry(w,h,d);
+  var mk=c+'|'+op2; if(!glowMatCache[mk]) glowMatCache[mk]=new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:op2,blending:THREE.AdditiveBlending,depthWrite:false});
+  return new THREE.Mesh(geoCache[k],glowMatCache[mk]);
+}
+/* Classic Galaga wing: a BIG broad wing on a flappable shoulder pivot
+   (side = +1 right / -1 left). Rotating the pivot's Z beats the wings up/down. */
+function wing(side,cBody,cTip,cGlow,s){
+  s=s||1;
   var p=new THREE.Group();
-  p.position.set(s*4,0,0);
-  var m=B(w,h,d,c); m.position.set(s*(w/2+3),0,0);
-  p.add(m); g.add(p);
+  p.position.set(side*3.2*s,3.0*s,-0.4);                        /* shoulder pivot (upper side) */
+  p.add(at(B(9*s,6.5*s,3*s,cBody),    side*5*s,-0.4*s,0));      /* main wing (broad) */
+  p.add(at(B(6.5*s,5.5*s,2.6*s,cBody),side*8*s,-2.4*s,0));      /* wing mid */
+  p.add(at(B(5*s,4.6*s,2.4*s,cTip),   side*10*s,-4.2*s,0));     /* wing tip */
+  p.add(at(B(5.5*s,3.6*s,2.4*s,cTip), side*6.5*s,2.8*s,0));     /* upper feather */
+  var gg=glow(12*s,8*s,3.4*s,cGlow||cTip,0.30);
+  gg.position.set(side*7.5*s,-1*s,0);
+  p.add(gg);
   return p;
+}
+/* ---- symmetric creature parts (wider, bolder, more "creature-like") ---- */
+function eyes(g,y,spread,r,core,glowC){
+  g.add(at(B(2.0*r,2.3*r,2.4*r,core),-spread,y,2.6*r));
+  g.add(at(B(2.0*r,2.3*r,2.4*r,core), spread,y,2.6*r));
+  g.add(at(glow(2.7*r,2.7*r,2.0*r,glowC,0.55),-spread,y,3.0*r));
+  g.add(at(glow(2.7*r,2.7*r,2.0*r,glowC,0.55), spread,y,3.0*r));
+}
+function antennae(g,x,y,h,tipC,tipR){
+  g.add(at(B(1,h,1,0x0c0c18),-x,y,0));
+  g.add(at(B(1,h,1,0x0c0c18), x,y,0));
+  g.add(at(B(tipR,tipR,tipR,tipC),-x,y+h*0.5,0));
+  g.add(at(B(tipR,tipR,tipR,tipC), x,y+h*0.5,0));
+}
+function claws(g,cBody,cTip){
+  g.add(at(B(7,4.5,2.8,cBody),-7.5,-5.5,0));
+  g.add(at(B(7,4.5,2.8,cBody), 7.5,-5.5,0));
+  g.add(at(B(4.5,4.5,2.6,cTip),-10.5,-7.5,0));
+  g.add(at(B(4.5,4.5,2.6,cTip), 10.5,-7.5,0));
+}
+function stinger(g,cBody,cTip){
+  g.add(at(B(3,7,2.6,cBody),0,-8.5,0));        /* tail segment */
+  g.add(at(B(2.6,4,2.4,cBody),1.6,-12.5,0));   /* curl         */
+  g.add(at(B(3.2,3.2,2.6,cTip),3.2,-14.5,0));  /* stinger tip  */
+  g.add(at(glow(3.8,3.8,2.6,cTip,0.6),3.2,-14.5,0.5));
+}
+/* Neon dive-trail streak placed behind the bug (head=+Y, so tail=-Y).
+   It is a child of the group, so it auto-orients when the bug rotates head-first. */
+function makeTrail(c,s){
+  s=s||1;
+  var k=(4*s)+'x'+(30*s)+'x'+(3*s); if(!geoCache[k]) geoCache[k]=new THREE.BoxGeometry(4*s,30*s,3*s);
+  var mk=c+'|trail'; if(!glowMatCache[mk]) glowMatCache[mk]=new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:0.12,blending:THREE.AdditiveBlending,depthWrite:false});
+  var m=new THREE.Mesh(geoCache[k],glowMatCache[mk]);
+  m.position.set(0,-24*s,0);
+  m.visible=false;
+  return m;
+}
+/* Wire up flap poses + trail for a winged bug */
+function finalizeBug(g,flaps,trailColor,trailScale){
+  g.userData.flaps=flaps;
+  for(var i=0;i<flaps.length;i++) g.add(flaps[i]);   /* ATTACH wings to the group so they actually render */
+  g.userData.flapA=-0.42;     /* spread: wings down & out */
+  g.userData.flapB=1.42;      /* folded: wings swept up high */
+  g.userData.beat=0.34;       /* 3D beat depth */
+  g.userData.baseScale=1;
+  if(trailColor){ var tr=makeTrail(trailColor,trailScale||1); g.add(tr); g.userData.trail=tr; }
+  return g;
 }
 function buildPlayer(){
   var g=new THREE.Group();
-  g.add(B(7,24,7,0xffffff));                    /* white fuselage */
-  g.add(at(B(3.5,10,3.5,0xffffff),0,-17,0));   /* nose */
-  g.add(at(B(30,9,3,0xffffff),0,5,0));         /* wing bar */
-  g.add(at(B(6,9,5,0xff2a2a),-15,5,0));        /* red wingtip */
-  g.add(at(B(6,9,5,0xff2a2a),15,5,0));         /* red wingtip */
-  g.add(at(B(4.5,7,4.5,0x3ef5f5),0,-3,0));     /* glowing blue cockpit */
-  g.add(at(B(5,5,3,0xffa52e),0,13,0));         /* engine block */
+  /* ---- Classic Galaga "fighter", nose facing UP (+y) ---- */
+  g.add(at(B(3.2,9,3.6,0xffffff),0,14,0));             /* nose spike        */
+  g.add(at(B(9,12,5,0xffffff),0,8,0));                /* upper fuselage    */
+  g.add(at(B(13,7,5,0xffffff),0,2,0));                /* shoulder (widest) */
+  g.add(at(B(8.5,7,5,0xffffff),0,-6,0));              /* lower fuselage    */
+  g.add(at(B(5,5.5,6,0x3ef5f5),0,9,0.6));             /* glowing cyan cockpit */
+  g.add(at(B(4,3.2,4,0x0c0c18),0,11,1));              /* dark windscreen   */
+  /* delta wings: rooted at the shoulder, swept sharply back toward the bottom */
+  var rw=new THREE.Mesh(geoCache['15.5x4.6x4']||(geoCache['15.5x4.6x4']=new THREE.BoxGeometry(15.5,4.6,4)),mat(0xffffff));
+  rw.rotation.z=-0.78; g.add(at(rw,11.5,-4.5,0));
+  var lw=new THREE.Mesh(geoCache['15.5x4.6x4'],mat(0xffffff));
+  lw.rotation.z=0.78;  g.add(at(lw,-11.5,-4.5,0));
+  g.add(at(B(5,5,5,0xff2a2a),17,-10,0));             /* red wingtip R */
+  g.add(at(B(5,5,5,0xff2a2a),-17,-10,0));            /* red wingtip L */
+  g.add(at(glow(15.5,5,4.2,0x3ef5f5,0.22),11.5,-4.5,-0.6));
+  g.add(at(glow(15.5,5,4.2,0x3ef5f5,0.22),-11.5,-4.5,-0.6));
+  /* wing-tip guns: short thin barrels pointing up */
+  g.add(at(B(1.6,8,1.6,0xdfe6ee),17,-6,0));          /* gun barrel R */
+  g.add(at(B(1.6,8,1.6,0xdfe6ee),-17,-6,0));         /* gun barrel L */
+  g.add(at(B(1.2,2.2,1.2,0xff2a2a),17,-1.4,0));      /* muzzle R */
+  g.add(at(B(1.2,2.2,1.2,0xff2a2a),-17,-1.4,0));     /* muzzle L */
+  g.add(at(B(6,7,5,0xffa52e),0,-13,0));              /* engine block    */
+  g.add(at(glow(5,4,4,0xffa52e,0.6),0,-16,0.5));     /* exhaust glow    */
   var pl=new THREE.PointLight(0x3ef5f5,0.8,90);
-  pl.position.set(0,-2,6);
+  pl.position.set(0,9,6);
   g.add(pl);
   g.userData.baseScale=1;
   return g;
 }
 function buildZako(){
   var g=new THREE.Group();
-  g.add(B(6,15,6,0xffd23e));
-  g.add(at(B(4,6,4,0xffffff),0,-11,0));
-  g.add(at(B(4,5,4,0x3b6bff),0,10,0));
-  g.userData.flaps=[wingPivot(g,10,2.5,3,0x3b6bff,1),wingPivot(g,10,2.5,3,0x3b6bff,-1)];
-  g.userData.baseScale=1;
-  return g;
+  g.add(at(B(12,6,6,0x7a1010),0,-6,0));          /* wide abdomen (dark red) */
+  g.add(at(B(13,7,7,0xff2a2a),0,1,0));           /* wide thorax (red)       */
+  g.add(at(B(10,8,7,0xff5a3c),0,7,0));           /* head                    */
+  g.add(at(B(8,2.6,5,0x0c0c18),0,5,0));          /* face band               */
+  eyes(g,8,2.2,1.3,0xf2f6ff,0x3ef5f5);
+  antennae(g,3.2,12,5,0xffd23e,1.8);
+  var wr=wing(1,0xffd23e,0xffec5a,0xfff2a8);     /* GOLD wings on red body */
+  var wl=wing(-1,0xffd23e,0xffec5a,0xfff2a8);
+  return finalizeBug(g,[wr,wl],0xff5a3c);
 }
 function buildGoei(){
   var g=new THREE.Group();
-  g.add(B(6,18,6,0xff3b3b));
-  g.add(at(B(5,6,5,0x3ef5f5),0,-12,0));
-  g.add(at(B(4,5,4,0xffffff),0,11,0));
-  g.userData.flaps=[wingPivot(g,12,8,2,0xffffff,1),wingPivot(g,12,8,2,0xffffff,-1)];
-  g.userData.baseScale=1;
-  return g;
+  g.add(at(B(11,6,6,0xe09a00),0,-6,0));          /* wide abdomen (gold)  */
+  g.add(at(B(12,7,7,0xffd23e),0,1,0));           /* wide thorax (yellow) */
+  g.add(at(B(9,8,7,0xfff0a0),0,7,0));            /* head                 */
+  g.add(at(B(7,2.6,5,0x0c0c18),0,5,0));          /* face band            */
+  eyes(g,8,2,1.4,0x2b6bff,0x3ef5f5);             /* blue eyes            */
+  antennae(g,3,12,5,0xff2a2a,1.8);               /* red antenna tips     */
+  g.add(at(B(10,3,3,0xff2a2a),0,10.5,0));        /* red crown bar        */
+  var wr=wing(1,0x2b6bff,0x1a4fd0,0x3ef5f5);     /* BIG BLUE wings       */
+  var wl=wing(-1,0x2b6bff,0x1a4fd0,0x3ef5f5);
+  return finalizeBug(g,[wr,wl],0x3ef5f5);
 }
 function buildBoss(sc){
+  sc=sc||1;
   var g=new THREE.Group();
-  g.add(B(9,24,9,0x39d353));
-  g.add(at(B(15,11,3,0x3b6bff),-11,2,0));
-  g.add(at(B(15,11,3,0x3b6bff),11,2,0));
-  g.add(at(B(7,8,7,0xffffff),0,-15,0));
-  g.add(at(B(4,5,4,0xff2a2a),0,-11,0));
-  g.add(at(B(5,5,4,0xffd23e),0,13,0));
-  g.scale.setScalar(sc);
-  g.userData.baseScale=sc;
-  return g;
+  function bb(w,h,d,c,x,y){ var o=B(w,h,d,c); o.position.set(x,y,0); g.add(o); }
+  bb(16*sc,7*sc,8*sc,0x1f9a3a,0,-10*sc);        /* wide lower abdomen (green) */
+  bb(15*sc,8*sc,9*sc,0x39d353,0,1*sc);          /* wide thorax (green)        */
+  bb(12*sc,9*sc,9*sc,0x2fbd45,0,9*sc);          /* head (green)               */
+  var ck='cyl'+(7.5*sc)+'x'+(6*sc); if(!shapeCache[ck]) shapeCache[ck]=new THREE.CylinderGeometry(7.5*sc,7.5*sc,6*sc,20);
+  var face=new THREE.Mesh(shapeCache[ck],mat(0x2b6bff));
+  face.rotation.x=Math.PI/2; face.position.set(0,9*sc,2*sc); g.add(face);  /* round blue face */
+  var rim=glow(16*sc,16*sc,3.5*sc,0x3ef5f5,0.18); rim.position.set(0,9*sc,1.5*sc); g.add(rim);
+  g.add(at(B(3.4*sc,3.4*sc,3*sc,0xf2f6ff),-3.4*sc,9.5*sc,4*sc));   /* eyes   */
+  g.add(at(B(3.4*sc,3.4*sc,3*sc,0xf2f6ff), 3.4*sc,9.5*sc,4*sc));
+  g.add(at(glow(4.4*sc,4.4*sc,2.6*sc,0x3ef5f5,0.55),-3.4*sc,9.5*sc,4.2*sc));
+  g.add(at(glow(4.4*sc,4.4*sc,2.6*sc,0x3ef5f5,0.55), 3.4*sc,9.5*sc,4.2*sc));
+  antennae(g,5.5*sc,15*sc,6*sc,0xffd23e,2.4*sc);
+  var wr=wing(1,0xffd23e,0xff2a2a,0xffec5a,sc);   /* BIG gold/red wings */
+  var wl=wing(-1,0xffd23e,0xff2a2a,0xffec5a,sc);
+  return finalizeBug(g,[wr,wl],0x3ef5f5,sc);
 }
 function buildSplitter(){
   var g=new THREE.Group();
-  g.add(B(7,14,5,0xffffff));
-  g.add(at(B(4,6,4,0x3ef5f5),0,-10,0));
-  g.add(at(B(5,4,4,0xffd23e),0,9,0));
-  g.userData.flaps=[wingPivot(g,11,6,2,0xff8c1a,1),wingPivot(g,11,6,2,0xff8c1a,-1)];
-  g.userData.baseScale=1;
-  return g;
+  g.add(at(B(12,6,6,0xc8480a),0,-6,0));          /* wide abdomen (dark orange) */
+  g.add(at(B(13,7,7,0xff8c1a),0,1,0));           /* wide thorax (orange)       */
+  g.add(at(B(10,8,7,0xffb057),0,7,0));           /* head                       */
+  g.add(at(B(8,2.6,5,0x0c0c18),0,5,0));          /* face band                  */
+  eyes(g,8,2.2,1.3,0xf2f6ff,0xffd23e);
+  antennae(g,3.2,12,5,0xfff0a0,1.8);
+  var wr=wing(1,0xfff3c8,0xffd23e,0xfff0a0);     /* light-yellow wings on orange body */
+  var wl=wing(-1,0xfff3c8,0xffd23e,0xfff0a0);
+  return finalizeBug(g,[wr,wl],0xff8c1a);
 }
 function buildMini(){
   var g=new THREE.Group();
-  g.add(B(3,7,3,0xffffff));
-  g.add(at(B(2,3,2,0x3ef5f5),0,-5,0));
-  g.userData.baseScale=1;
+  g.add(at(B(6,5,5,0x1aa8c8),0,-4,0));           /* small body */
+  g.add(at(B(7,5,5,0x3ef5f5),0,1,0));            /* thorax     */
+  g.add(at(B(5.5,5,5,0x7ff5ff),0,5,0));          /* head       */
+  eyes(g,5,1.6,1.0,0xf2f6ff,0x3ef5f5);
+  var wr=wing(1,0xeaffff,0x2b6bff,0x8fffff,0.5); /* bright white/blue wings */
+  var wl=wing(-1,0xeaffff,0x2b6bff,0x8fffff,0.5);
+  finalizeBug(g,[wr,wl]);
+  var tr=makeTrail(0x3ef5f5,0.5); g.add(tr); g.userData.trail=tr;
   return g;
 }
 function buildStealth(){
   var g=new THREE.Group();
-  g.add(B(3.5,20,3,0x8f6bff));
-  g.add(at(B(2.5,5,2.5,0xe6dcff),0,-13,0));
-  g.userData.flaps=[wingPivot(g,14,3.5,2,0x6a4dff,1),wingPivot(g,14,3.5,2,0x6a4dff,-1)];
-  g.userData.baseScale=1;
-  return g;
+  g.add(at(B(12,6,6,0x3a2080),0,-6,0));          /* wide abdomen (dark purple) */
+  g.add(at(B(13,7,7,0x6a4dff),0,1,0));           /* wide thorax (purple)       */
+  g.add(at(B(10,8,7,0x8f6bff),0,7,0));           /* head                        */
+  g.add(at(B(8,2.6,5,0x0c0c18),0,5,0));          /* face band                   */
+  eyes(g,8,2.2,1.3,0x3ef5f5,0x8f6bff);
+  antennae(g,3.2,12,5,0xff5ad0,1.8);
+  claws(g,0x6a4dff,0xff5ad0);                     /* lower claws/legs           */
+  var wr=wing(1,0xff9ae8,0xff5ad0,0xb9a4ff);     /* pink wings on purple body */
+  var wl=wing(-1,0xff9ae8,0xff5ad0,0xb9a4ff);
+  return finalizeBug(g,[wr,wl],0x8f6bff);
 }
 function buildPlasma(){
   var g=new THREE.Group();
-  g.add(B(7,26,6,0x3ef5f5));
-  g.add(at(B(8,8,7,0xff2a2a),0,0,0));
-  g.add(at(B(4,6,4,0xffffff),0,-15,0));
-  g.add(at(B(5,4,4,0xffd23e),0,14,0));
-  g.userData.baseScale=1;
+  if(!shapeCache['sph6.5']) shapeCache['sph6.5']=new THREE.SphereGeometry(6.5,18,14);
+  g.add(new THREE.Mesh(shapeCache['sph6.5'],mat(0x3ef5f5)));   /* core orb */
+  g.add(at(B(8,6,6,0x1aa8c8),0,-2,0));                          /* body     */
+  g.add(at(glow(18,18,10,0x3ef5f5,0.18),0,0,0));               /* halo     */
+  g.add(at(glow(7,7,7,0xffffff,0.5),0,0,0));                   /* hot core */
+  stinger(g,0x1aa8c8,0x8fffff);                                 /* stinger  */
+  var wr=wing(1,0xd9ffff,0xff5ad0,0x8fffff,0.8); /* bright white/magenta wings */
+  var wl=wing(-1,0xd9ffff,0xff5ad0,0x8fffff,0.8);
+  finalizeBug(g,[wr,wl]);
+  var tr=makeTrail(0x3ef5f5,0.8); g.add(tr); g.userData.trail=tr;
   return g;
 }
 function buildMiner(){
   var g=new THREE.Group();
-  g.add(B(8,12,6,0xff5ad0));
-  g.add(B(4,4,4,0xfff2a8));
-  g.add(at(B(4,4,2,0x8f2a8f),0,-8,0));
-  g.userData.flaps=[wingPivot(g,11,4,2,0xb03ad0,1),wingPivot(g,11,4,2,0xb03ad0,-1)];
-  g.userData.baseScale=1;
-  return g;
+  g.add(at(B(11,6,6,0x8f1580),0,-5,0));            /* wide abdomen (dark magenta) */
+  g.add(at(B(12,7,7,0xff5ad0),0,1,0));             /* wide thorax (magenta)       */
+  g.add(at(B(9,7,7,0xff8ae0),0,7,0));              /* head                         */
+  g.add(at(B(7,2.6,5,0x0c0c18),0,5.5,0));          /* face band                    */
+  eyes(g,7.5,2,1.3,0xffd23e,0xffec5a);             /* gold eyes                    */
+  antennae(g,3,11,5,0xffd23e,1.6);
+  claws(g,0xff5ad0,0xffd23e);                      /* wide claws                   */
+  stinger(g,0xff5ad0,0xffd23e);                    /* stinger = the mine it carries */
+  var wr=wing(1,0xffd23e,0xff8ae0,0xfff0a0);     /* gold wings on magenta body */
+  var wl=wing(-1,0xffd23e,0xff8ae0,0xfff0a0);
+  return finalizeBug(g,[wr,wl],0xff5ad0);
 }
 /* ================= ENEMY TYPES & 8-LEVEL CAMPAIGN ================= */
 var TYPES={
-  ZAKO:   {pts:100,  r:12, hp:1, color:0xffd23e, build:buildZako, flap:1},
-  GOEI:   {pts:200,  r:13, hp:1, color:0xff5a5a, build:buildGoei, flap:1, pulse:1},
-  BOSS:   {pts:500,  r:18, hp:2, color:0x39d353, boss:1, build:function(){return buildBoss(1.3);}},
-  MEGA:   {pts:1000, r:24, hp:3, color:0x39d353, boss:1, beamW:30, build:function(){return buildBoss(2.1);}},
-  SPLIT:  {pts:150,  r:12, hp:1, color:0xff8c1a, split:1, build:buildSplitter, flap:1},
-  MINI:   {pts:250,  r:8,  hp:1, color:0xffffff, mini:1, build:buildMini},
-  STEALTH:{pts:300,  r:12, hp:1, color:0x8f6bff, build:buildStealth, flap:1},
-  PLASMA: {pts:400,  r:13, hp:1, color:0x3ef5f5, build:buildPlasma},
-  MINER:  {pts:350,  r:12, hp:1, color:0xff5ad0, mine:1, build:buildMiner, pulse:1, flap:1}
+  ZAKO:   {pts:100,  r:12, hp:1, color:0xff5a3c, build:buildZako, flap:1, flapHz:2.6},
+  GOEI:   {pts:200,  r:13, hp:1, color:0xffd23e, build:buildGoei, flap:1, pulse:1, flapHz:2.2},
+  BOSS:   {pts:500,  r:18, hp:2, color:0x39d353, boss:1, build:function(){return buildBoss(1.3);}, flapHz:1.6},
+  MEGA:   {pts:1000, r:24, hp:3, color:0x39d353, boss:1, beamW:30, build:function(){return buildBoss(2.1);}, flapHz:1.4},
+  SPLIT:  {pts:150,  r:12, hp:1, color:0xff8c1a, split:1, build:buildSplitter, flap:1, flapHz:2.4},
+  MINI:   {pts:250,  r:8,  hp:1, color:0x3ef5f5, mini:1, build:buildMini},
+  STEALTH:{pts:300,  r:12, hp:1, color:0x8f6bff, build:buildStealth, flap:1, flapHz:2.0},
+  PLASMA: {pts:400,  r:13, hp:1, color:0x3ef5f5, build:buildPlasma, pulse:1},
+  MINER:  {pts:350,  r:12, hp:1, color:0xff5ad0, mine:1, build:buildMiner, pulse:1, flap:1, flapHz:2.0}
 };
 var LEVELS=[
   {name:'THE SWARM',           rows:[['GOEI',8],['ZAKO',8],['ZAKO',8]],     mode:'single',fire:null,   dive:1.7, atk:2.6},
@@ -469,7 +584,7 @@ function spawnEnemy(type,fx,fy,delay){
   var e={type:type,def:def,group:g,x:fx,y:fy,fx:fx,fy:fy,
          state:'WAIT',delay:delay||0,t:0,dur:2.4,path:null,
          phase:Math.random()*6.28,hp:def.hp,noReturn:false,
-         spiral:0,willBeam:false,flash:0,baseScale:g.userData.baseScale||1};
+         spiral:0,willBeam:false,flash:0,baseScale:g.userData.baseScale||1,flap:0};
   enemies.push(e);
   return e;
 }
@@ -528,6 +643,35 @@ function bez(e,t){
   e.y=c([p[0].y,p[1].y,p[2].y,p[3].y]);
   if(e.spiral) e.x+=Math.sin(t*Math.PI*4+e.phase)*26; /* corkscrew wobble */
   e.group.position.set(e.x,e.y,1);
+}
+function bezVel(e,t){
+  var p=e.path, t2=Math.min(Math.max(t,0),1), u=1-t2;
+  return {
+    x:3*u*u*(p[1].x-p[0].x)+6*u*t2*(p[2].x-p[1].x)+3*t2*t2*(p[3].x-p[2].x),
+    y:3*u*u*(p[1].y-p[0].y)+6*u*t2*(p[2].y-p[1].y)+3*t2*t2*(p[3].y-p[2].y)
+  };
+}
+/* Face the player (head up) while in formation; rotate head-first along the
+   flight path when entering / diving / returning. Eased shortest-arc turn plus a
+   small high-frequency wobble sells the "live bug darting" feel; subtle banking
+   in Z adds 3D depth. */
+function orientBug(e,dt){
+  var g=e.group;
+  var target=0;
+  if((e.state==='DIVE'||e.state==='ENTER'||e.state==='RETURN') && e.path){
+    var v=bezVel(e,e.t);
+    var len=Math.sqrt(v.x*v.x+v.y*v.y);
+    if(len>0.001){
+      target=Math.atan2(-v.x,v.y);                 /* +Y (head) leads the motion */
+      target+=Math.sin(G.time*10+e.phase)*0.09;    /* bug-like dart wobble */
+    }
+  }
+  var cur=g.rotation.z, d=target-cur;
+  while(d>Math.PI) d-=6.28318530718;
+  while(d<-Math.PI) d+=6.28318530718;
+  g.rotation.z=cur+d*Math.min(1,dt*9);
+  var bank=(e.state==='DIVE')?Math.sin(G.time*3+e.phase)*0.05:0;
+  g.rotation.x+=(bank-g.rotation.x)*Math.min(1,dt*8);
 }
 function removeEnemy(i){
   scene.remove(enemies[i].group);
@@ -591,18 +735,36 @@ function updateEnemies(dt){
         }
         break;
     }
-    /* Wing flap + body pulse + hit flash animations */
+    /* --- Wing beat: classic 2-frame, slow flap (spread <-> folded up). --- */
     var fl=e.group.userData.flaps;
     if(fl){
-      var s=Math.sin(G.time*11+e.phase)*0.55;
-      fl[0].rotation.y=s;
-      if(fl[1]) fl[1].rotation.y=s;
+      var hz=(e.def.flapHz||2.2)*((e.state==='DIVE')?1.7:1);   /* wings beat faster while diving */
+      var frame=(G.time*hz + e.phase*0.13)|0;
+      var target=(frame&1)?1:0;
+      e.flap += (target - e.flap)*Math.min(1,dt*16);            /* ~60ms blend: snappy yet smooth */
+      var A=e.group.userData.flapA, Bp=e.group.userData.flapB, bt=e.group.userData.beat||0.3;
+      var ang=A+(Bp-A)*e.flap;
+      fl[0].rotation.z=ang;    fl[0].rotation.y=-bt*e.flap;
+      fl[1].rotation.z=-ang;   fl[1].rotation.y=bt*e.flap;
     }
+    /* --- Body attitude: face the player in formation; head-first while flying. --- */
+    orientBug(e,dt);
+    /* --- Neon dive-trail streak (auto-orients: child of the group). --- */
+    var tr=e.group.userData.trail;
+    if(tr){
+      if(e.state==='DIVE'||e.state==='ENTER'||e.state==='RETURN'){
+        tr.visible=true;
+        tr.material.opacity=0.12+0.09*Math.abs(Math.sin(G.time*8+e.phase));
+      } else {
+        tr.visible=false;
+      }
+    }
+    /* --- Hit flash + body pulse --- */
     if(e.flash>0){
       e.flash-=dt;
-      e.group.scale.setScalar(e.baseScale*1.3);
+      e.group.scale.setScalar(e.baseScale*1.28);
     } else {
-      e.group.scale.setScalar(e.baseScale*(e.def.pulse?(1+0.07*Math.sin(G.time*6+e.phase)):1));
+      e.group.scale.setScalar(e.baseScale*(e.def.pulse?(1+0.06*Math.sin(G.time*6+e.phase)):1));
     }
   }
 }
@@ -699,9 +861,9 @@ function enemyFire(dt){
   var d=Math.sqrt(dx*dx+dy*dy)||1;
   var nx=dx/d, ny=dy/d;
   if(e.def.mine&&Math.random()<0.5){
-    spawnBullet(e.x,e.y-8,0,130,true);                 /* wobbly slow mine */
+    spawnBullet(e.x,e.y-8,0,-130,true);                /* wobbly slow mine (fires DOWN) */
   } else if(cfg.fire==='down'){
-    spawnBullet(e.x+(Math.random()-0.5)*6,e.y-10,0,250,false); /* straight down */
+    spawnBullet(e.x+(Math.random()-0.5)*6,e.y-10,0,-250,false); /* straight DOWN at the player */
   } else if(cfg.fire==='aim'){
     spawnBullet(e.x,e.y-10,nx*320,ny*320,false);        /* aimed plasma */
   } else {
@@ -1030,6 +1192,12 @@ function loseLife(){
 function stageClear(){
   var cfg=cfgLevel();
   if(cfg.bonus) addScore(cfg.bonus);      /* 100% destruction bonus (stage 3: 10,000) */
+  /* Stage won: wipe every in-flight projectile/effect so nothing carries over into
+     the next stage. (The ship re-centers when the new STAGE number appears.) */
+  endBeam();
+  clearLasers();      /* player lasers */
+  clearBullets();     /* enemy bullets */
+  clearBursts();      /* leftover explosion particles */
   G.state='CLEAR';
   G.clearT=1.7;
   renderOverlay('CLEAR');
@@ -1045,6 +1213,12 @@ function afterClear(){
     sound.jingle();
     return;
   }
+  /* Re-center the ship the moment the new STAGE number is shown */
+  player.alive=true;
+  player.invuln=1.2;  /* brief grace so the centered ship isn't instantly hit */
+  player.x=0;
+  player.group.visible=true;
+  player.group.position.set(0,PLAYER_Y,3);
   G.state='STAGE_INTRO';
   G.introT=2.2;
   renderOverlay('STAGE_INTRO');

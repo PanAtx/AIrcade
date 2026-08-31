@@ -58,10 +58,27 @@ if ('serviceWorker' in navigator) {
   .ov-blink{font-size:13px;color:#3ef5f5;letter-spacing:3px;animation:ovblink 1s steps(2) infinite;text-shadow:0 0 10px rgba(62,245,245,.7)}
   .ov-keys{font-size:8px;line-height:2;color:#7f7fa8;letter-spacing:1px}
   @keyframes ovblink{50%{opacity:.15}}
-  .lives i{display:inline-block;width:13px;height:15px;margin-right:5px;
+  .lives{display:inline-flex;align-items:center;gap:5px}
+  .lives i{display:inline-block;width:13px;height:15px;
            background:linear-gradient(#fff,#cfeaff);
            clip-path:polygon(50% 0,64% 34%,100% 100%,50% 80%,0 100%,36% 34%)}
-  .btns{display:flex;gap:6px}
+  .lives b{color:#fff;font-size:12px}
+  #fx{position:absolute;top:40%;left:0;right:0;text-align:center;z-index:4;pointer-events:none;
+      font-family:'Press Start 2P',monospace;font-size:24px;letter-spacing:3px;font-weight:700;
+      opacity:0;text-shadow:0 0 18px currentColor,2px 2px 0 rgba(0,0,0,.5)}
+  #fx.show{animation:fxpop 2s ease forwards}
+  @keyframes fxpop{
+    0%{opacity:0;transform:scale(.35)}
+    16%{opacity:1;transform:scale(1.18)}
+    30%{transform:scale(1)}
+    72%{opacity:1;transform:scale(1)}
+    100%{opacity:0;transform:scale(1.35)}
+  }
+  .btns{display:flex;gap:6px;position:relative}
+  .cheat-flag{position:absolute;bottom:calc(100% + 3px);left:50%;transform:translateX(-50%);
+              font-family:'Press Start 2P',monospace;font-size:8px;letter-spacing:1.5px;white-space:nowrap;
+              color:#3ef5f5;text-shadow:0 0 8px rgba(62,245,245,.9);display:none}
+  .cheat-flag.on{display:block;animation:ovblink 1.1s steps(2) infinite}
   .btns button{background:#1c1c4a;color:#ffd23e;border:2px solid #3a3a9a;border-radius:8px;font-size:14px;
                padding:4px 10px;cursor:pointer;font-family:inherit;touch-action:manipulation}
   .btns button:active{background:#3a3a9a}
@@ -105,23 +122,24 @@ if ('serviceWorker' in navigator) {
     <span>SCORE&nbsp;<b id="score">000000</b></span>
     <span>STAGE&nbsp;<b id="lvl">1</b>/20</span>
     <span>HIGH&nbsp;<b id="high">000000</b></span>
-    <span id="weapon" style="font-size:11px;letter-spacing:1px;color:#8f9bff">BOLT</span>
     <span class="lives" id="lives"></span>
   </div>
   <div class="stage" id="stage">
     <canvas id="gl"></canvas>
+    <div id="fx"></div>
     <div id="ov"></div>
   </div>
   <div class="pads">
     <div class="joy-base" id="joyBase"><div class="joy-stick" id="joyStick"></div><div class="joy-knob" id="joyKnob"></div></div>
     <span class="btns">
+      <span class="cheat-flag" id="cheatFlag">CHEAT MODE</span>
       <button id="pauseBtn" type="button" title="Pause (P)">⏸</button>
       <button id="restartBtn" type="button" title="Restart (R)">🔄</button>
       <button id="muteBtn" type="button" title="Mute (M)">🔊</button>
     </span>
     <button class="fire-btn" id="fireBtn" type="button" title="Fire (SPACE)">FIRE</button>
   </div>
-  <div class="hint">←→/A D MOVE · SPACE FIRE (HOLD = AUTO) · P PAUSE · M MUTE · R RESTART<br>POWER-UPS: POWER SHOT / 3-WAY / PLASMA · +1 LIFE EVERY 10,000 PTS · CHEATS: C = ∞ LIVES, L = SKIP STAGE<br>TOUCH: JOYSTICK + FIRE, OR DRAG ANYWHERE · GAMEPAD: STICK / D-PAD · A = FIRE / START · START = PAUSE</div>
+  <div class="hint">←→/A D MOVE · SPACE FIRE (HOLD = AUTO) · P PAUSE · M MUTE · R RESTART<br>POWER-UPS (TIMED, ~4-8s): POWER SHOT / 3-WAY / PLASMA / FORCE FIELD · +1 LIFE EVERY 50,000 PTS · CHEATS: C = ∞ LIVES, L = SKIP STAGE<br>TOUCH: JOYSTICK + FIRE, OR DRAG ANYWHERE · GAMEPAD: STICK / D-PAD · A = FIRE / START · START = PAUSE</div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -132,15 +150,17 @@ var W=420,H=600,HW=210,HH=300;
 var PLAYER_Y=-235,PLAYER_SPEED=265,PLAYER_R=11;
 var MAX_LASERS=16,LASER_SPEED=950,FIRE_CD=0.20;
 var MAX_LEVEL=20;                                   /* campaign length (20 stages) */
-var LIFE_STEP=10000;                                /* extra life every 10k points */
+var LIFE_STEP=50000;                               /* extra life every 50k points */
 var PLASMA_DUR=4.0,PLASMA_SPEED=1250,PLASMA_R=16;  /* temporary plasma weapon */
+var WEAPON_DUR=8.0;                                 /* POWERSHOT / SPREAD weapon duration seconds */
+var FORCE_DUR=6.0;                                  /* force-field invulnerability seconds */
 function clamp(v,a,b){return v<a?a:(v>b?b:v);}
 function loadHi(){try{return +(localStorage.getItem('aiarcade_galaga_hi')||0);}catch(e){return 0;}}
 function saveHi(){try{localStorage.setItem('aiarcade_galaga_hi',String(G.hi));}catch(e){}}
 /* Global game state */
 var G={state:'MENU',score:0,hi:loadHi(),lives:3,level:1,time:0,
        introT:0,clearT:0,dyingT:0,attackT:2,fireT:2,beamCap:0,vBonus:0,fireCd:0,
-       weapon:'BOLT',plasmaT:0,nextLife:10000,infLives:false,pupT:6};
+       weapon:'BOLT',weaponT:0,plasmaT:0,nextLife:LIFE_STEP,infLives:false,pupT:3,forceT:0};
 var player={group:null,x:0,alive:false,invuln:0,respawnT:0};
 var enemies=[],lasers=[],ebullets=[],bursts=[],pups=[],starLayers=[];
 /* DOM refs */
@@ -150,7 +170,8 @@ var elScore=document.getElementById('score');
 var elHi=document.getElementById('high');
 var elLvl=document.getElementById('lvl');
 var elLives=document.getElementById('lives');
-var elWeapon=document.getElementById('weapon');
+var fxEl=document.getElementById('fx');
+var cheatFlagEl=document.getElementById('cheatFlag');
 var pauseBtn=document.getElementById('pauseBtn');
 var restartBtn=document.getElementById('restartBtn');
 var muteBtn=document.getElementById('muteBtn');
@@ -192,6 +213,87 @@ SoundEngine.prototype.laserSound=function(){
   g.gain.exponentialRampToValueAtTime(0.0001,t+0.18);
   o.connect(g); g.connect(this.master);
   o.start(t); o.stop(t+0.2);
+};
+/* ---- per-weapon fire sounds (each weapon sounds different) ---- */
+/* BOLT — crisp, short neutral zap (the basic single shot) */
+SoundEngine.prototype.boltSound=function(){
+  if(!this.ensure()) return;
+  var t=this.ctx.currentTime;
+  var o=this.ctx.createOscillator(); o.type='square';
+  o.frequency.setValueAtTime(1150,t);
+  o.frequency.exponentialRampToValueAtTime(320,t+0.10);
+  var g=this.ctx.createGain();
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(0.17,t+0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+0.12);
+  o.connect(g); g.connect(this.master);
+  o.start(t); o.stop(t+0.14);
+};
+/* POWERSHOT — heavy phaser blast: punchy saw charging up with a low body (3 aligned beams) */
+SoundEngine.prototype.powershotSound=function(){
+  if(!this.ensure()) return;
+  var t=this.ctx.currentTime;
+  var o=this.ctx.createOscillator(); o.type='sawtooth';
+  o.frequency.setValueAtTime(180,t);
+  o.frequency.exponentialRampToValueAtTime(720,t+0.05);
+  o.frequency.exponentialRampToValueAtTime(140,t+0.24);
+  var g=this.ctx.createGain();
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(0.26,t+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+0.26);
+  o.connect(g); g.connect(this.master);
+  o.start(t); o.stop(t+0.28);
+  var o2=this.ctx.createOscillator(); o2.type='triangle';
+  o2.frequency.setValueAtTime(96,t);
+  o2.frequency.exponentialRampToValueAtTime(72,t+0.24);
+  var g2=this.ctx.createGain();
+  g2.gain.setValueAtTime(0.0001,t);
+  g2.gain.exponentialRampToValueAtTime(0.15,t+0.012);
+  g2.gain.exponentialRampToValueAtTime(0.0001,t+0.26);
+  o2.connect(g2); g2.connect(this.master);
+  o2.start(t); o2.stop(t+0.28);
+};
+/* SPREAD (3-WAY) — three quick ascending pips, a little scatter burst */
+SoundEngine.prototype.spreadSound=function(){
+  if(!this.ensure()) return;
+  var t=this.ctx.currentTime;
+  var notes=[520,760,1040];
+  for(var i=0;i<notes.length;i++){
+    var ts=t+i*0.05;
+    var o=this.ctx.createOscillator(); o.type='square'; o.frequency.value=notes[i];
+    var g=this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001,ts);
+    g.gain.exponentialRampToValueAtTime(0.13,ts+0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001,ts+0.05);
+    o.connect(g); g.connect(this.master);
+    o.start(ts); o.stop(ts+0.06);
+  }
+};
+/* PLASMA — deep, resonant, piercing "bwoop" with a shimmering edge (piercing ball) */
+SoundEngine.prototype.plasmaSound=function(){
+  if(!this.ensure()) return;
+  var t=this.ctx.currentTime;
+  var o=this.ctx.createOscillator(); o.type='sine';
+  o.frequency.setValueAtTime(1300,t);
+  o.frequency.exponentialRampToValueAtTime(180,t+0.32);
+  var g=this.ctx.createGain();
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(0.24,t+0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+0.36);
+  o.connect(g); g.connect(this.master);
+  o.start(t); o.stop(t+0.38);
+  var o2=this.ctx.createOscillator(); o2.type='sawtooth';
+  o2.frequency.setValueAtTime(3200,t);
+  o2.frequency.exponentialRampToValueAtTime(380,t+0.32);
+  var f=this.ctx.createBiquadFilter(); f.type='bandpass'; f.Q.value=7;
+  f.frequency.setValueAtTime(2600,t);
+  f.frequency.exponentialRampToValueAtTime(520,t+0.32);
+  var g2=this.ctx.createGain();
+  g2.gain.setValueAtTime(0.0001,t);
+  g2.gain.exponentialRampToValueAtTime(0.10,t+0.02);
+  g2.gain.exponentialRampToValueAtTime(0.0001,t+0.34);
+  o2.connect(f); f.connect(g2); g2.connect(this.master);
+  o2.start(t); o2.stop(t+0.38);
 };
 SoundEngine.prototype.explosionSound=function(type){
   if(!this.ensure()) return;
@@ -424,6 +526,8 @@ var pupHaloGeo=new THREE.SphereGeometry(9,16,12);
 var pupHaloMatCache={};
 function pupHaloMat(c){ if(!pupHaloMatCache[c]) pupHaloMatCache[c]=new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:0.35,blending:THREE.AdditiveBlending,depthWrite:false}); return pupHaloMatCache[c]; }
 var pupSphereGeo=new THREE.SphereGeometry(4.5,14,10);
+var pupRingGeo=new THREE.TorusGeometry(5,1.6,10,28);
+var pupDiscGeo=new THREE.CircleGeometry(4.5,24);
 /* ================= SHIP BUILDERS (procedural low-poly meshes) ================= */
 var matCache={},geoCache={},glowMatCache={},shapeCache={};
 function mat(c){ if(!matCache[c]) matCache[c]=new THREE.MeshBasicMaterial({color:c}); return matCache[c]; }
@@ -861,7 +965,7 @@ function updateEnemies(dt){
       case 'CAPTURE':
         e.capT-=dt;
         e.group.position.y=e.y+Math.sin(G.time*3)*2;
-        if(player.alive){
+        if(player.alive&&G.forceT<=0){
           var bw=e.def.beamW||22;
           if(Math.abs(player.x-e.x)<bw) G.beamCap=Math.min(1,G.beamCap+dt/0.8);
           else G.beamCap=Math.max(0,G.beamCap-dt*1.2);
@@ -1129,18 +1233,21 @@ function fireWeapon(){
   var y0=PLAYER_Y+10;
   if(G.plasmaT>0){
     spawnShot(player.x,y0,0,'plasma');                 /* piercing ball to the top */
+    sound.plasmaSound();
   } else if(G.weapon==='POWERSHOT'){
     spawnShot(player.x-5,y0,0,'beam');                 /* 3 aligned beams */
     spawnShot(player.x,y0,0,'beam');
     spawnShot(player.x+5,y0,0,'beam');
+    sound.powershotSound();
   } else if(G.weapon==='SPREAD'){
     spawnShot(player.x,y0,0,'beam');                   /* 3-way: up / up-left / up-right */
     spawnShot(player.x,y0,-340,'bullet');
     spawnShot(player.x,y0,340,'bullet');
+    sound.spreadSound();
   } else {
     spawnShot(player.x,y0,0,'beam');                   /* basic bolt */
+    sound.boltSound();
   }
-  sound.laserSound();
 }
 function updateLasers(dt){
   for(var i=lasers.length-1;i>=0;i--){
@@ -1157,9 +1264,11 @@ function clearLasers(){
   lasers.length=0;
 }
 /* ================= POWER-UPS (spawn / drop / collect) ================= */
-var PUP_TYPES=['POWERSHOT','SPREAD','PLASMA'];
+var PUP_TYPES=['POWERSHOT','SPREAD','PLASMA','FORCEFIELD'];
 function randomPupType(){ return PUP_TYPES[(Math.random()*PUP_TYPES.length)|0]; }
-function pupColor(t){ return t==='POWERSHOT'?0x2fd7ff : (t==='SPREAD'?0xffb43a : 0x4dff9e); }
+function pupColor(t){ if(t==='POWERSHOT')return 0x2fd7ff; if(t==='SPREAD')return 0xffb43a; if(t==='FORCEFIELD')return 0x3a86ff; return 0x4dff9e; }
+function pupLabel(t){ if(t==='POWERSHOT')return 'POWER SHOT'; if(t==='SPREAD')return '3-WAY SHOT'; if(t==='PLASMA')return 'PLASMA SHOT'; return 'FORCE FIELD'; }
+function pupCssColor(t){ var c=pupColor(t); return 'rgb('+(c>>16&255)+','+(c>>8&255)+','+(c&255)+')'; }
 function buildPup(type){
   var g=new THREE.Group();
   var c=pupColor(type);
@@ -1171,6 +1280,9 @@ function buildPup(type){
     var fk='2.4x7x3'; if(!geoCache[fk]) geoCache[fk]=new THREE.BoxGeometry(2.4,7,3);
     var l=new THREE.Mesh(geoCache[fk], mat(c)); l.rotation.z=0.7;  g.add(at(l,-4,-1,0));  /* fan left  */
     var r=new THREE.Mesh(geoCache[fk], mat(c)); r.rotation.z=-0.7; g.add(at(r,4,-1,0));   /* fan right */
+  } else if(type==='FORCEFIELD'){
+    g.add(new THREE.Mesh(pupRingGeo, mat(c)));               /* shield ring */
+    g.add(new THREE.Mesh(pupDiscGeo, pupHaloMat(c)));        /* soft shield disc */
   } else {
     g.add(new THREE.Mesh(pupSphereGeo, mat(c)));             /* plasma orb */
   }
@@ -1190,12 +1302,25 @@ function clearPups(){
 function collectPup(type){
   if(type==='PLASMA'){
     G.plasmaT=PLASMA_DUR;          /* temporary: reverts to the current weapon when it expires */
+  } else if(type==='FORCEFIELD'){
+    G.forceT=FORCE_DUR;            /* blue shield: invulnerable while active, fades out after */
   } else {
-    G.weapon=type;                 /* POWERSHOT / SPREAD persist until the player dies */
+    G.weapon=type;                 /* POWERSHOT / SPREAD — now temporary (WEAPON_DUR seconds) */
+    G.weaponT=WEAPON_DUR;
     G.plasmaT=0;
   }
   sound.powerup();
+  showFx(pupLabel(type), pupCssColor(type));   /* 2s animated popup in the canvas */
   updateHUD();
+}
+/* Animated power-up popup (center of the canvas, ~2 seconds) */
+function showFx(text,color){
+  if(!fxEl) return;
+  fxEl.textContent=text;
+  fxEl.style.color=color;
+  fxEl.classList.remove('show');
+  void fxEl.offsetWidth;          /* force reflow so the CSS animation restarts */
+  fxEl.classList.add('show');
 }
 function updatePups(dt){
   for(var i=pups.length-1;i>=0;i--){
@@ -1220,9 +1345,33 @@ function updatePups(dt){
 function pupSpawner(dt){
   G.pupT-=dt;
   if(G.pupT<=0){
-    G.pupT=6+Math.random()*3;
-    if(pups.length<2) spawnPup((Math.random()*2-1)*(HW-55), HH+20, randomPupType());
+    G.pupT=3+Math.random()*2;   /* drops more often to keep the player supplied */
+    if(pups.length<3) spawnPup((Math.random()*2-1)*(HW-55), HH+20, randomPupType());
   }
+}
+/* ================= FORCE FIELD (player invulnerability shield) ================= */
+var forceGlow={group:null,fillMat:null,edgeMat:null};
+function makeForceGlow(){
+  var g=new THREE.Group();
+  var fill=new THREE.Mesh(new THREE.CircleGeometry(24,40), new THREE.MeshBasicMaterial({color:0x2b6bff,transparent:true,opacity:0.0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));
+  var edge=new THREE.Mesh(new THREE.TorusGeometry(24,1.6,12,48), new THREE.MeshBasicMaterial({color:0x5ab0ff,transparent:true,opacity:0.0,blending:THREE.AdditiveBlending,depthWrite:false}));
+  g.add(fill); g.add(edge);
+  g.visible=false;
+  scene.add(g);
+  forceGlow.group=g; forceGlow.fillMat=fill.material; forceGlow.edgeMat=edge.material;
+}
+function updateForceField(dt){
+  if(G.forceT>0) G.forceT=Math.max(0,G.forceT-dt);
+  if(!forceGlow.group) makeForceGlow();
+  var g=forceGlow.group;
+  g.position.set(player.x,PLAYER_Y,5);
+  var on=G.forceT>0;
+  var tEdge=on?(0.45+0.25*Math.sin(G.time*9)):0;
+  var tFill=on?(0.10+0.04*Math.sin(G.time*9)):0;
+  forceGlow.edgeMat.opacity+=(tEdge-forceGlow.edgeMat.opacity)*Math.min(1,dt*10);
+  forceGlow.fillMat.opacity+=(tFill-forceGlow.fillMat.opacity)*Math.min(1,dt*10);
+  g.scale.setScalar(1+(on?0.05*Math.sin(G.time*6):0));
+  g.visible=(forceGlow.edgeMat.opacity>0.02||forceGlow.fillMat.opacity>0.02);
 }
 function spawnBullet(x,y,vx,vy,wob){
   var g=new THREE.Group();
@@ -1385,9 +1534,9 @@ function damageEnemy(j){
     }
   }
   if(beam.owner===e) endBeam();
-  if(Math.random()<0.10 && pups.length<3) spawnPup(e.x,e.y,randomPupType());  /* chance to drop a power-up */
+  if(Math.random()<0.15 && pups.length<3) spawnPup(e.x,e.y,randomPupType());  /* chance to drop a power-up */
   removeEnemy(j);
-  if(G.state==='PLAYING'&&enemies.length===0) stageClear();
+  checkStageClear();
 }
 function collisions(){
   /* Player lasers vs enemies */
@@ -1416,7 +1565,7 @@ function collisions(){
     }
   }
   if(G.state!=='PLAYING') return;
-  if(!player.alive||player.invuln>0) return;
+  if(!player.alive||player.invuln>0||G.forceT>0) return;   /* force field makes the ship invulnerable */
   /* Enemy bullets vs player */
   var pr=PLAYER_R+5;
   for(var k=ebullets.length-1;k>=0;k--){
@@ -1453,11 +1602,18 @@ function obliteratePlayer(){
 function hitPlayer(){ obliteratePlayer(); }
 function capturePlayer(){ endBeam(); obliteratePlayer(); }
 function loseLife(){
-  G.lives--;
   /* power-ups are lost when the player dies */
   G.weapon='BOLT';
+  G.weaponT=0;
   G.plasmaT=0;
-  if(G.infLives) G.lives=999;   /* cheat: infinite lives */
+  G.forceT=0;
+  if(G.infLives){
+    /* infinite-lives cheat: ship still explodes, but NO life is lost — just respawn */
+    player.respawnT=1.5;
+    updateHUD();
+    return;
+  }
+  G.lives--;
   updateHUD();
   if(G.lives<=0){
     G.state='DYING';
@@ -1468,6 +1624,7 @@ function loseLife(){
     player.respawnT=1.5;
   }
 }
+function checkStageClear(){ if(G.state==='PLAYING'&&enemies.length===0) stageClear(); }
 function stageClear(){
   var cfg=cfgLevel();
   if(cfg.bonus) addScore(cfg.bonus);      /* 100% destruction bonus (stage 3: 10,000) */
@@ -1482,6 +1639,10 @@ function stageClear(){
   G.clearT=1.7;
   renderOverlay('CLEAR');
   sound.jingle();
+  if(cfg.bonus){   /* make the banked bonus obvious on the clear screen */
+    showFx('BONUS! +'+cfg.bonus, '#ffd23e');   /* gold popup: perfect-clear bonus banked */
+    sound.extraLife();                          /* reward fanfare */
+  }
 }
 function afterClear(){ progressLevel(); }
 function progressLevel(){
@@ -1515,7 +1676,7 @@ function skipLevel(){
 /* Cheat: toggle infinite lives (C key) */
 function toggleInfLives(){
   G.infLives=!G.infLives;
-  if(G.infLives) G.lives=999;
+  if(cheatFlagEl) cheatFlagEl.classList.toggle('on',G.infLives);   /* "CHEAT MODE" above the pause button */
   updateHUD();
 }
 /* ================= INPUT: KEYBOARD ================= */
@@ -1524,11 +1685,14 @@ var joyX=0, joyPtr=null;
 var touchFire=false;
 var padMove=0, padFire=false;
 var drag={active:false,id:null,wx:0};
+/* Digitalize the touch joystick to behave like the keyboard / D-pad:
+   full left, full right, or center (stop) — no partial speeds. */
+function joyDigital(jx){ return (jx>0.20)?1:((jx<-0.20)?-1:0); }
 function mvInput(){
   var mv=0;
   if(keys.left) mv--;
   if(keys.right) mv++;
-  mv+=joyX;
+  mv+=joyDigital(joyX);
   mv+=padMove;
   return clamp(mv,-1,1);
 }
@@ -1690,7 +1854,7 @@ function joyApply(clientX){
   var r=joyBase.getBoundingClientRect();
   var cx=r.left+r.width/2;
   joyX=clamp((clientX-cx)/(r.width*0.45),-1,1);
-  joySet(joyX);
+  joySet(joyDigital(joyX));   /* snap the knob: full-left / center / full-right */
 }
 joyBase.addEventListener('pointerdown',function(e){
   e.preventDefault(); e.stopPropagation();
@@ -1721,7 +1885,7 @@ function mirrorPads(){
   var kb=0;
   if(keys.left) kb--;
   if(keys.right) kb++;
-  joySet((joyPtr!==null)?joyX:clamp(kb+padMove,-1,1));
+  joySet((joyPtr!==null)?joyDigital(joyX):clamp(kb+padMove,-1,1));
   var down=fireHeld();
   if(down!==fireDown){
     fireDown=down;
@@ -1768,17 +1932,7 @@ function updateHUD(){
   elScore.textContent=pad6(G.score);
   elHi.textContent=pad6(G.hi);
   elLvl.textContent=Math.min(G.level,MAX_LEVEL);
-  if(G.infLives){ elLives.innerHTML='&#8734;'; elLives.style.color='#3ef5f5'; }
-  else { var s=''; for(var i=0;i<Math.max(0,Math.min(G.lives,12));i++) s+='<i></i>'; elLives.innerHTML=s; elLives.style.color=''; }
-  if(elWeapon){
-    var wname,wcolor;
-    if(G.plasmaT>0){ wname='PLASMA'; wcolor='#4dff9e'; }
-    else if(G.weapon==='POWERSHOT'){ wname='POWERSHOT'; wcolor='#2fd7ff'; }
-    else if(G.weapon==='SPREAD'){ wname='3-WAY'; wcolor='#ffb43a'; }
-    else { wname='BOLT'; wcolor='#8f9bff'; }
-    elWeapon.textContent=wname;
-    elWeapon.style.color=wcolor;
-  }
+  elLives.innerHTML='<i></i><b>x'+Math.max(0,G.lives)+'</b>';   /* ship icon + "x" + remaining lives */
 }
 function renderOverlay(st){
   var html='';
@@ -1786,7 +1940,7 @@ function renderOverlay(st){
     html='<div class="ov-title">GALAGA</div>'+
          '<div class="ov-sub">SPACE SHOOTER · 20 STAGES</div>'+
          '<div class="ov-blink">▶ PRESS START · GAMEPAD A / START</div>'+
-         '<div class="ov-keys">←→ / A D — MOVE · SPACE — FIRE (HOLD = AUTO)<br>CATCH POWER-UPS · POWER SHOT / 3-WAY / PLASMA · +1 LIFE EVERY 10K<br>CHEATS: C = ∞ LIVES · L = SKIP STAGE<br>P PAUSE · M MUTE · R RESTART · JOYSTICK / DRAG / GAMEPAD</div>'+
+         '<div class="ov-keys">←→ / A D — MOVE · SPACE — FIRE (HOLD = AUTO)<br>CATCH POWER-UPS · POWER SHOT / 3-WAY / PLASMA / FORCE FIELD (TIMED) · +1 LIFE EVERY 50K<br>CHEATS: C = ∞ LIVES · L = SKIP STAGE<br>P PAUSE · M MUTE · R RESTART · JOYSTICK / DRAG / GAMEPAD</div>'+
          '<div id="gpStat" class="ov-keys" style="color:#55556f"></div>';
   } else if(st==='STAGE_INTRO'){
     html='<div class="ov-stage">STAGE '+G.level+'</div>'+
@@ -1820,7 +1974,8 @@ function startGame(){
   endBeam();
   G.score=0; G.lives=3; G.level=1; G.vBonus=0;
   G.attackT=1.6; G.fireT=2.0; G.beamCap=0; G.fireCd=0;
-  G.weapon='BOLT'; G.plasmaT=0; G.nextLife=10000; G.infLives=false; G.pupT=6;
+  G.weapon='BOLT'; G.weaponT=0; G.plasmaT=0; G.forceT=0; G.nextLife=LIFE_STEP; G.infLives=false; G.pupT=3;
+  if(cheatFlagEl) cheatFlagEl.classList.remove('on');
   clearEnemies(); clearLasers(); clearBullets(); clearBursts(); clearPups();
   player.x=0; player.alive=true; player.invuln=1.5; player.respawnT=0;
   player.group.visible=true;
@@ -1883,7 +2038,8 @@ function updatePlayer(dt){
   }
   thruster(dt);
   G.fireCd-=dt;
-  if(G.plasmaT>0){ G.plasmaT-=dt; if(G.plasmaT<=0){ G.plasmaT=0; updateHUD(); } }   /* plasma is temporary: reverts to last weapon */
+  if(G.plasmaT>0){ G.plasmaT-=dt; if(G.plasmaT<=0){ G.plasmaT=0; updateHUD(); } }   /* plasma is temporary */
+  if(G.weaponT>0){ G.weaponT-=dt; if(G.weaponT<=0){ G.weaponT=0; G.weapon='BOLT'; updateHUD(); } }   /* POWERSHOT / SPREAD are temporary: revert to BOLT */
   if(fireHeld()&&G.fireCd<=0&&lasers.length<MAX_LASERS){
     G.fireCd=FIRE_CD;
     fireWeapon();
@@ -1894,6 +2050,7 @@ function tick(dt){
   G.time+=dt;
   updateStars(dt);
   sampleGamepad();
+  updateForceField(dt);   /* runs in ALL states so the shield glow stays glued to the ship on re-center */
   var st=G.state;
   if(st==='STAGE_INTRO'){
     G.introT-=dt;
@@ -1928,6 +2085,7 @@ function tick(dt){
   updatePups(dt);
   pupSpawner(dt);
   collisions();
+  checkStageClear();   /* catch all removal paths, incl. noReturn minis that fly off-screen */
 }
 function loop(){
   requestAnimationFrame(loop);
